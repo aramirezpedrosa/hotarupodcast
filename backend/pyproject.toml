@@ -1,0 +1,26 @@
+[project]
+name = "hotarupodcast"
+version = "0.1.0"
+description = "Transcripción, detección de voces y vídeo para podcasts"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+# Motor real de transcripción y diarización (pesado: instala torch).
+ml = ["whisperx>=3.7,<4"]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
