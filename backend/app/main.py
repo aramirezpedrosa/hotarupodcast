@@ -1,23 +1,29 @@
-"""API HTTP de HotaruPodcast (fase 1: transcripción y voces sugeridas).
+"""API HTTP de HotaruPodcast: episodios, voces, intervinientes y limpieza de audio.
 
 Arranque: uvicorn app.main:create_app --factory
 """
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+
 from .audio import AudioError, cut_clip
+from .cleanup import CleanupOptions, Strength, clean_audio
 from .config import Settings, get_settings
 from .jobs import JobRunner
 from .models import (
+    Cleanup,
+    CleanupSettings,
+    CleanupStrength,
     Episode,
     EpisodeStatus,
     EpisodeSummary,
@@ -51,6 +57,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         for ep in storage.list():
             if ep.status in (EpisodeStatus.pending, EpisodeStatus.processing):
                 runner.submit(ep.id)
+            elif ep.cleanup and ep.cleanup.status in (EpisodeStatus.pending, EpisodeStatus.processing):
+                runner.submit_cleanup(ep.id)
         yield
         runner.shutdown()
 
@@ -131,6 +139,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         if hints is not None:
             ep.hints = hints
         ep.status, ep.error, ep.voices, ep.segments = EpisodeStatus.pending, None, [], []
+        ep.cleanup = None
+        storage.cleaned_path(ep.id).unlink(missing_ok=True)
         storage.clear_history(ep.id)
         storage.save(ep)
         runner.submit(ep.id)
@@ -234,6 +244,58 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         if result is None:
             raise HTTPException(409, "No hay nada que rehacer")
         return result
+
+    # --- Limpieza de audio -------------------------------------------------
+
+    @app.put("/api/episodes/{episode_id}/cleanup", response_model=Episode)
+    def start_cleanup(episode_id: str, body: CleanupSettings):
+        ep = editable(episode_id)
+        if ep.cleanup and ep.cleanup.status in (EpisodeStatus.pending, EpisodeStatus.processing):
+            raise HTTPException(409, "Ya se está limpiando el audio")
+        ep.cleanup = Cleanup(settings=body)
+        storage.save(ep)
+        runner.submit_cleanup(ep.id)
+        return ep
+
+    @app.get("/api/episodes/{episode_id}/cleanup/audio")
+    def cleaned_audio(episode_id: str, download: bool = False):
+        ep = load(episode_id)
+        path = storage.cleaned_path(episode_id)
+        if ep.cleanup is None or ep.cleanup.status != EpisodeStatus.done or not path.exists():
+            raise HTTPException(404, "Todavía no hay audio limpio")
+        return FileResponse(
+            path,
+            media_type="audio/mpeg",
+            filename=f"{ep.title} (limpio).mp3",
+            content_disposition_type="attachment" if download else "inline",
+            headers={"Cache-Control": "no-cache"},
+        )
+
+    @app.get("/api/episodes/{episode_id}/cleanup/preview")
+    def cleanup_preview(
+        episode_id: str,
+        start: float = Query(0, ge=0),
+        duration: float = Query(20, gt=0, le=30),
+        strength: CleanupStrength = CleanupStrength.media,
+        keep_breaths: bool = True,
+    ):
+        """Fragmento procesado con los ajustes indicados, para escuchar antes de aplicar."""
+        ep = editable(episode_id)
+        spans = [(s.start, s.end) for s in ep.segments]
+        key = hashlib.sha1(
+            repr((round(start, 2), round(duration, 2), strength.value, keep_breaths, spans)).encode()
+        ).hexdigest()[:16]
+        out = storage.previews_dir(episode_id) / f"{key}.mp3"
+        if not out.exists():
+            try:
+                clean_audio(
+                    storage.original_path(episode_id), out, spans,
+                    CleanupOptions(Strength(strength.value), keep_breaths),
+                    start=start, duration=duration,
+                )
+            except AudioError as e:
+                raise HTTPException(500, f"No se pudo generar la escucha previa: {e}")
+        return FileResponse(out, media_type="audio/mpeg")
 
     # --- Perfiles de intervinientes ----------------------------------------
 

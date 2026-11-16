@@ -5,6 +5,7 @@
     data/episodes/<id>/audio16k.wav
     data/episodes/<id>/samples/<voice>-<start>-<end>.mp3
     data/episodes/<id>/history.json      (deshacer / rehacer)
+    data/episodes/<id>/cleaned.mp3       (audio limpio)
     data/profiles/profiles.json
     data/profiles/photos/<id>-<n>.<ext>
 """
@@ -120,6 +121,7 @@ class Storage:
             h["undo"] = (h["undo"] + [before])[-HISTORY_LIMIT:]
             h["redo"] = []
             self._write_history(episode.id, h)
+            self._mark_cleanup_stale(before, episode)
             return self.save(episode)
 
     def snapshot(self, episode: Episode) -> dict:
@@ -137,10 +139,30 @@ class Storage:
             if not h[src]:
                 return None
             snap = h[src].pop()
-            h[dst] = (h[dst] + [self._snapshot(episode)])[-HISTORY_LIMIT:]
+            current = self._snapshot(episode)
+            h[dst] = (h[dst] + [current])[-HISTORY_LIMIT:]
             self._restore(episode, snap)
+            self._mark_cleanup_stale(current, episode)
             self._write_history(episode.id, h)
             return self.save(episode)
+
+    @staticmethod
+    def _mark_cleanup_stale(before: dict, episode: Episode) -> None:
+        # La limpieza depende de dónde hay voz: si cambian los tramos, hay que repetirla.
+        if episode.cleanup is None or episode.cleanup.status != "done":
+            return
+        old = [(s["start"], s["end"]) for s in before["segments"]]
+        new = [(s.start, s.end) for s in episode.segments]
+        if old != new:
+            episode.cleanup.stale = True
+
+    def cleaned_path(self, episode_id: str) -> Path:
+        return self.episode_dir(episode_id) / "cleaned.mp3"
+
+    def previews_dir(self, episode_id: str) -> Path:
+        d = self.episode_dir(episode_id) / "previews"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
 
     def clear_history(self, episode_id: str) -> None:
         self._history_path(episode_id).unlink(missing_ok=True)

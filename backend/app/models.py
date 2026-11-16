@@ -65,6 +65,27 @@ class SpeakerHints(BaseModel):
     max_speakers: int | None = Field(default=None, ge=1, le=20)
 
 
+class CleanupStrength(str, Enum):
+    suave = "suave"
+    media = "media"
+    fuerte = "fuerte"
+
+
+class CleanupSettings(BaseModel):
+    strength: CleanupStrength = CleanupStrength.media
+    # Deja más margen tras cada frase para no cortar respiraciones ni colas de voz.
+    keep_breaths: bool = True
+
+
+class Cleanup(BaseModel):
+    status: EpisodeStatus = EpisodeStatus.pending
+    settings: CleanupSettings = Field(default_factory=CleanupSettings)
+    error: str | None = None
+    updated_at: datetime = Field(default_factory=utcnow)
+    # True si los tramos de voz han cambiado desde la última limpieza.
+    stale: bool = False
+
+
 class Episode(BaseModel):
     id: str
     title: str
@@ -78,6 +99,7 @@ class Episode(BaseModel):
     hints: SpeakerHints = Field(default_factory=SpeakerHints)
     voices: list[Voice] = Field(default_factory=list)
     segments: list[Segment] = Field(default_factory=list)
+    cleanup: Cleanup | None = None
     # Calculados al responder; no se guardan en disco.
     can_undo: bool = False
     can_redo: bool = False

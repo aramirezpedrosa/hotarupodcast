@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, Episode, formatTime, Profile, Voice, WordPosition } from "./api";
 import Avatar from "./Avatar";
+import CleanupPanel from "./CleanupPanel";
 import Modal from "./Modal";
 import ProfileForm from "./ProfileForm";
 import StatusBadge from "./StatusBadge";
@@ -23,30 +24,37 @@ export default function EpisodeView({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Consulta el estado hasta que el procesado termine.
+  // Carga inicial del episodio y de los perfiles.
   useEffect(() => {
     let cancelled = false;
-    let timer: number | undefined;
-    const load = async () => {
-      try {
-        const ep = await api.getEpisode(id);
-        if (cancelled) return;
-        setEpisode(ep);
-        setError(null);
-        if (ep.status === "pending" || ep.status === "processing") {
-          timer = window.setTimeout(load, POLL_MS);
+    api
+      .getEpisode(id)
+      .then((ep) => {
+        if (!cancelled) {
+          setEpisode(ep);
+          setError(null);
         }
-      } catch (e) {
-        if (!cancelled) setError((e as Error).message);
-      }
-    };
-    load();
+      })
+      .catch((e) => !cancelled && setError((e as Error).message));
     api.listProfiles().then((p) => !cancelled && setProfiles(p)).catch(() => {});
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
   }, [id]);
+
+  // Mientras se transcribe o se limpia el audio, consulta el estado cada pocos segundos.
+  const working =
+    episode?.status === "pending" ||
+    episode?.status === "processing" ||
+    episode?.cleanup?.status === "pending" ||
+    episode?.cleanup?.status === "processing";
+  useEffect(() => {
+    if (!working) return;
+    const timer = window.setInterval(() => {
+      api.getEpisode(id).then(setEpisode).catch(() => {});
+    }, POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [id, working]);
 
   // Toda edición pasa por aquí: una cada vez, y el error se muestra sin perder el estado.
   const edit = useCallback(async (action: () => Promise<Episode>) => {
@@ -145,6 +153,11 @@ export default function EpisodeView({ id }: { id: string }) {
             onSeek={seek}
             onUndo={undo}
             onRedo={redo}
+          />
+          <CleanupPanel
+            episode={episode}
+            getPlayerTime={() => audioRef.current?.currentTime ?? 0}
+            onChange={setEpisode}
           />
           {editError && (
             <div className="toast error" role="alert">
