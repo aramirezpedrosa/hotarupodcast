@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
+from collections.abc import Iterable
 
 from ..models import Interval, Segment, Voice, Word
 from .base import EngineResult, RawWord
@@ -76,6 +78,32 @@ def _join(words: list[Word]) -> str:
     return text
 
 
+def group_turns(pairs: Iterable[tuple[str, Word]]) -> list[Segment]:
+    """Agrupa palabras (voz, palabra) en turnos: palabras seguidas de la misma voz
+    sin silencios largos forman un segmento."""
+    turns: list[tuple[str, list[Word]]] = []
+    for vid, word in pairs:
+        if turns and turns[-1][0] == vid and word.start - turns[-1][1][-1].end <= MAX_GAP_IN_TURN:
+            turns[-1][1].append(word)
+        else:
+            turns.append((vid, [word]))
+    return [
+        Segment(
+            id=f"seg-{i + 1}",
+            start=ws[0].start,
+            end=ws[-1].end,
+            voice_id=vid,
+            text=_join(ws),
+            words=ws,
+        )
+        for i, (vid, ws) in enumerate(turns)
+    ]
+
+
+def _flatten(segments: list[Segment]) -> list[tuple[str, Word]]:
+    return [(s.voice_id, w) for s in sorted(segments, key=lambda s: s.start) for w in s.words]
+
+
 def build_episode_data(
     result: EngineResult, sample_seconds: float = 6.0
 ) -> tuple[list[Voice], list[Segment]]:
@@ -95,27 +123,10 @@ def build_episode_data(
         if w.speaker not in voice_of:
             voice_of[w.speaker] = f"voz-{len(voice_of) + 1}"
 
-    # Turnos: palabras consecutivas de la misma voz sin silencios largos.
-    turns: list[tuple[str, list[Word]]] = []
-    for w in words:
-        vid = voice_of[w.speaker]
-        word = Word(text=w.text.strip(), start=round(w.start, 3), end=round(w.end, 3))
-        if turns and turns[-1][0] == vid and word.start - turns[-1][1][-1].end <= MAX_GAP_IN_TURN:
-            turns[-1][1].append(word)
-        else:
-            turns.append((vid, [word]))
-
-    segments = [
-        Segment(
-            id=f"seg-{i + 1}",
-            start=ws[0].start,
-            end=ws[-1].end,
-            voice_id=vid,
-            text=_join(ws),
-            words=ws,
-        )
-        for i, (vid, ws) in enumerate(turns)
-    ]
+    segments = group_turns(
+        (voice_of[w.speaker], Word(text=w.text.strip(), start=round(w.start, 3), end=round(w.end, 3)))
+        for w in words
+    )
 
     sources: dict[str, list[str]] = defaultdict(list)
     for spk, vid in voice_of.items():
@@ -192,21 +203,80 @@ def merge_voices(
             target.source_speakers.extend(v.source_speakers)
             if target.embedding is None:
                 target.embedding = v.embedding
+            if target.profile_id is None:
+                target.profile_id = v.profile_id
     voices = [v for v in voices if v.id not in sources]
 
-    merged: list[Segment] = []
-    for s in sorted(segments, key=lambda s: s.start):
-        vid = target_id if s.voice_id in sources else s.voice_id
-        if merged and merged[-1].voice_id == vid and s.start - merged[-1].end <= MAX_GAP_IN_TURN:
-            prev = merged[-1]
-            words = prev.words + s.words
-            merged[-1] = prev.model_copy(
-                update={"end": max(prev.end, s.end), "words": words, "text": _join(words)}
-            )
-        else:
-            merged.append(s.model_copy(update={"voice_id": vid}))
-    for i, s in enumerate(merged):
-        s.id = f"seg-{i + 1}"
-
+    merged = group_turns(
+        (target_id if vid in sources else vid, w) for vid, w in _flatten(segments)
+    )
     refresh_voice_stats(voices, merged, sample_seconds)
     return voices, merged
+
+
+class EditError(ValueError):
+    pass
+
+
+@dataclass
+class WordRef:
+    segment_id: str
+    word_index: int
+
+
+def new_voice(voices: list[Voice]) -> Voice:
+    """Crea una voz vacía para un interviniente que el detector no separó."""
+    used = {v.id for v in voices}
+    n = 1
+    while f"voz-{n}" in used:
+        n += 1
+    used_colors = {v.color for v in voices}
+    color = next((c for c in PALETTE if c not in used_colors), PALETTE[(n - 1) % len(PALETTE)])
+    return Voice(id=f"voz-{n}", label=f"Voz {n}", color=color)
+
+
+def reassign_words(
+    voices: list[Voice],
+    segments: list[Segment],
+    start: WordRef,
+    end: WordRef,
+    voice_id: str | None,
+    sample_seconds: float = 6.0,
+) -> tuple[list[Voice], list[Segment], str]:
+    """Asigna a otra voz las palabras entre start y end (ambas incluidas).
+
+    El tramo puede abarcar varios segmentos. Con voice_id None se crea una voz nueva.
+    Los turnos se recomponen y las voces que se quedan sin intervenciones desaparecen.
+    Devuelve las voces, los segmentos y la voz asignada.
+    """
+    flat = _flatten(segments)
+    offsets: dict[str, int] = {}
+    pos = 0
+    for s in sorted(segments, key=lambda s: s.start):
+        offsets[s.id] = pos
+        pos += len(s.words)
+    by_id = {s.id: s for s in segments}
+
+    def index(ref: WordRef) -> int:
+        seg = by_id.get(ref.segment_id)
+        if seg is None:
+            raise EditError(f"Segmento no encontrado: {ref.segment_id}")
+        if not 0 <= ref.word_index < len(seg.words):
+            raise EditError(f"Palabra fuera de rango en {ref.segment_id}")
+        return offsets[seg.id] + ref.word_index
+
+    a, b = sorted((index(start), index(end)))
+    voices = [v.model_copy(deep=True) for v in voices]
+    if voice_id is None:
+        voice = new_voice(voices)
+        voices.append(voice)
+        voice_id = voice.id
+    elif voice_id not in {v.id for v in voices}:
+        raise EditError(f"Voz no encontrada: {voice_id}")
+
+    pairs = [(voice_id if a <= i <= b else vid, w) for i, (vid, w) in enumerate(flat)]
+    new_segments = group_turns(pairs)
+    speaking = {s.voice_id for s in new_segments}
+    voices = [v for v in voices if v.id in speaking]
+    refresh_voice_stats(voices, new_segments, sample_seconds)
+    return voices, new_segments, voice_id

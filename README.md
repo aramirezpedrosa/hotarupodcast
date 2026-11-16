@@ -19,9 +19,21 @@ anima el perfil de quien habla.
 - Se guarda la huella de voz de cada interviniente para reconocerle en otros episodios
   (se usará en la fase 5).
 
-Próximas fases: perfiles (nombre, cargo, foto, información) y editor de tramos ·
-reducción de ruido en los huecos sin voz · render de vídeo · reconocimiento de invitados
-recurrentes.
+**Fase 2: perfiles de intervinientes y editor de tramos.**
+
+- Biblioteca de intervinientes común a todos los episodios (menú "Intervinientes"):
+  nombre, cargo opcional, foto (JPG, PNG o WebP, hasta 5 MB), información adicional y color.
+- En cada episodio, cada voz se asigna a un interviniente existente o se crea uno nuevo
+  desde la propia tarjeta de la voz. Un interviniente solo puede estar en una voz por
+  episodio; si aparece en dos, se fusionan.
+- En la transcripción se selecciona con el ratón cualquier tramo (desde una palabra hasta
+  varios párrafos) y se asigna a otra voz o a una voz nueva. Los turnos se recomponen solos
+  y las voces que se quedan sin intervenciones desaparecen.
+- Deshacer y rehacer (botones o Ctrl+Z / Ctrl+Shift+Z) para fusiones, asignaciones y
+  reasignaciones; se guardan los últimos 50 cambios de cada episodio.
+
+Próximas fases: reducción de ruido en los huecos sin voz · render de vídeo ·
+reconocimiento de invitados recurrentes.
 
 ## Estructura
 
@@ -30,7 +42,8 @@ backend/   API en Python (FastAPI). La lógica de voces está en app/pipeline/vo
 frontend/  Interfaz web (React + Vite)
 ```
 
-Los datos se guardan en disco, una carpeta por episodio en `data/episodes/<id>/`.
+Los datos se guardan en disco: una carpeta por episodio en `data/episodes/<id>/` y los
+intervinientes en `data/profiles/`.
 
 ## Puesta en marcha
 

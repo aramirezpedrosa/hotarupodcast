@@ -111,3 +111,64 @@ def test_merge_unknown_voice_raises():
         assert e.args[0] == "voz-9"
     else:
         raise AssertionError("debería fallar")
+
+
+def _three_speakers():
+    return build_episode_data(
+        EngineResult(
+            language="es",
+            words=[
+                w("Hola", 0.0, 0.4, "A"),
+                w("a", 0.5, 0.6, "A"),
+                w("todos.", 0.7, 1.0, "A"),
+                w("Bienvenida.", 1.2, 2.0, "A"),
+                w("Gracias.", 2.2, 3.0, "B"),
+            ],
+        )
+    )
+
+
+def test_reassign_middle_of_turn_splits_it():
+    from app.pipeline.voices import WordRef, reassign_words
+
+    voices, segments = _three_speakers()
+    # "Bienvenida." la dijo en realidad la voz 2.
+    voices, segments, vid = reassign_words(
+        voices, segments, WordRef("seg-1", 3), WordRef("seg-1", 3), "voz-2"
+    )
+    assert vid == "voz-2"
+    assert [(s.voice_id, s.text) for s in segments] == [
+        ("voz-1", "Hola a todos."),
+        ("voz-2", "Bienvenida. Gracias."),
+    ]
+
+
+def test_reassign_across_segments_to_new_voice_and_drop_empty_voice():
+    from app.pipeline.voices import WordRef, reassign_words
+
+    voices, segments = _three_speakers()
+    voices, segments, vid = reassign_words(
+        voices, segments, WordRef("seg-2", 0), WordRef("seg-1", 3), None
+    )
+    assert vid == "voz-3"
+    assert [(s.voice_id, s.text) for s in segments] == [
+        ("voz-1", "Hola a todos."),
+        ("voz-3", "Bienvenida. Gracias."),
+    ]
+    # La voz 2 se queda sin intervenciones y desaparece.
+    assert sorted(v.id for v in voices) == ["voz-1", "voz-3"]
+    assert next(v for v in voices if v.id == "voz-3").label == "Voz 3"
+
+
+def test_reassign_rejects_bad_positions():
+    import pytest
+
+    from app.pipeline.voices import EditError, WordRef, reassign_words
+
+    voices, segments = _three_speakers()
+    with pytest.raises(EditError):
+        reassign_words(voices, segments, WordRef("seg-1", 9), WordRef("seg-1", 9), "voz-2")
+    with pytest.raises(EditError):
+        reassign_words(voices, segments, WordRef("seg-9", 0), WordRef("seg-1", 0), "voz-2")
+    with pytest.raises(EditError):
+        reassign_words(voices, segments, WordRef("seg-1", 0), WordRef("seg-1", 0), "voz-7")

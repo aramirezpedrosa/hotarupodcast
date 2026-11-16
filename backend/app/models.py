@@ -55,6 +55,8 @@ class Voice(BaseModel):
     sample: Interval | None = None
     # Huella de voz (embedding) para reconocer a la persona en otros episodios.
     embedding: list[float] | None = None
+    # Perfil del interviniente asignado por el usuario (biblioteca común a todos los episodios).
+    profile_id: str | None = None
 
 
 class SpeakerHints(BaseModel):
@@ -76,6 +78,9 @@ class Episode(BaseModel):
     hints: SpeakerHints = Field(default_factory=SpeakerHints)
     voices: list[Voice] = Field(default_factory=list)
     segments: list[Segment] = Field(default_factory=list)
+    # Calculados al responder; no se guardan en disco.
+    can_undo: bool = False
+    can_redo: bool = False
 
 
 class EpisodeSummary(BaseModel):
@@ -90,3 +95,51 @@ class EpisodeSummary(BaseModel):
 class MergeVoicesRequest(BaseModel):
     target_id: str
     source_ids: list[str] = Field(min_length=1)
+
+
+class Profile(BaseModel):
+    """Interviniente reutilizable entre episodios (presentador fijo, invitado recurrente)."""
+
+    id: str
+    name: str = Field(min_length=1, max_length=120)
+    role: str | None = Field(default=None, max_length=160)
+    info: str | None = Field(default=None, max_length=4000)
+    color: str = Field(default="#3B82F6", pattern=r"^#[0-9A-Fa-f]{6}$")
+    # Nombre del archivo de la foto dentro de la carpeta de perfiles.
+    photo: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class ProfileInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    role: str | None = Field(default=None, max_length=160)
+    info: str | None = Field(default=None, max_length=4000)
+    color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
+class ProfilePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    role: str | None = Field(default=None, max_length=160)
+    info: str | None = Field(default=None, max_length=4000)
+    color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
+class VoicePatch(BaseModel):
+    # Cadena vacía o null para quitar el perfil asignado.
+    profile_id: str | None = None
+    label: str | None = Field(default=None, min_length=1, max_length=60)
+    color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
+class WordPosition(BaseModel):
+    segment_id: str
+    word_index: int = Field(ge=0)
+
+
+class ReassignRequest(BaseModel):
+    start: WordPosition
+    end: WordPosition
+    # Voz destino; null crea una voz nueva.
+    voice_id: str | None = None
+

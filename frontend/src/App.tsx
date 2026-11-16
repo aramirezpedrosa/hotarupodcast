@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import EpisodeList from "./EpisodeList";
 import EpisodeView from "./EpisodeView";
+import ProfilesPage from "./ProfilesPage";
 
-// Enrutado mínimo por hash: #/ (lista) y #/episodios/<id> (detalle).
+// Enrutado mínimo por hash: #/ (lista), #/episodios/<id> (detalle) y #/intervinientes.
 function useRoute(): string {
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => {
@@ -23,9 +24,19 @@ export default function App() {
         <a href="#/" className="brand">
           HotaruPodcast
         </a>
+        <nav>
+          <a href="#/">Episodios</a>
+          <a href="#/intervinientes">Intervinientes</a>
+        </nav>
       </header>
       <main className="content">
-        {match ? <EpisodeView id={match[1]} /> : <EpisodeList />}
+        {match ? (
+          <EpisodeView id={match[1]} />
+        ) : route.startsWith("#/intervinientes") ? (
+          <ProfilesPage />
+        ) : (
+          <EpisodeList />
+        )}
       </main>
     </div>
   );
