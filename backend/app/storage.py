@@ -6,8 +6,12 @@
     data/episodes/<id>/samples/<voice>-<start>-<end>.mp3
     data/episodes/<id>/history.json      (deshacer / rehacer)
     data/episodes/<id>/cleaned.mp3       (audio limpio)
+    data/episodes/<id>/videos.json       (vídeos y su progreso)
+    data/episodes/<id>/videos/<vid>.mp4
     data/profiles/profiles.json
     data/profiles/photos/<id>-<n>.<ext>
+    data/backgrounds/backgrounds.json    (fotos propias para fondos de vídeo)
+    data/backgrounds/<id>.<ext>
 """
 
 from __future__ import annotations
@@ -18,12 +22,12 @@ import re
 import threading
 from pathlib import Path
 
-from .models import Episode, Profile, Segment, Voice, utcnow
+from .models import CustomBackground, Episode, Profile, Segment, Video, Voice, utcnow
 
 _ID_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 # Cambios que se pueden deshacer por episodio.
 HISTORY_LIMIT = 50
-_EPHEMERAL = {"can_undo", "can_redo"}
+_EPHEMERAL = {"can_undo", "can_redo", "videos"}
 
 
 class NotFound(KeyError):
@@ -36,6 +40,8 @@ class Storage:
         self.root.mkdir(parents=True, exist_ok=True)
         self.profiles_root = Path(root) / "profiles"
         self.photos_dir.mkdir(parents=True, exist_ok=True)
+        self.backgrounds_dir = Path(root) / "backgrounds"
+        self.backgrounds_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
 
     def episode_dir(self, episode_id: str) -> Path:
@@ -50,6 +56,7 @@ class Storage:
         with self._lock:
             _write_atomic(d / "episode.json", episode.model_dump_json(indent=2, exclude=_EPHEMERAL))
         self._fill_history_flags(episode)
+        episode.videos = self.list_videos(episode.id)
         return episode
 
     def load(self, episode_id: str) -> Episode:
@@ -58,6 +65,7 @@ class Storage:
             raise NotFound(episode_id)
         ep = Episode.model_validate_json(path.read_text(encoding="utf-8"))
         self._fill_history_flags(ep)
+        ep.videos = self.list_videos(episode_id)
         return ep
 
     def list(self) -> list[Episode]:
@@ -164,6 +172,55 @@ class Storage:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
+    # --- Vídeos -------------------------------------------------------------
+
+    def _videos_path(self, episode_id: str) -> Path:
+        return self.episode_dir(episode_id) / "videos.json"
+
+    def list_videos(self, episode_id: str) -> list[Video]:
+        path = self._videos_path(episode_id)
+        if not path.exists():
+            return []
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [Video.model_validate(v) for v in data]
+
+    def _write_videos(self, episode_id: str, videos: list[Video]) -> None:
+        _write_atomic(
+            self._videos_path(episode_id),
+            json.dumps([v.model_dump(mode="json") for v in videos], indent=2),
+        )
+
+    def add_video(self, episode_id: str, video: Video) -> None:
+        with self._lock:
+            self._write_videos(episode_id, [video] + self.list_videos(episode_id))
+
+    def update_video(self, episode_id: str, video_id: str, **fields) -> Video | None:
+        with self._lock:
+            videos = self.list_videos(episode_id)
+            found = None
+            for v in videos:
+                if v.id == video_id:
+                    for k, val in fields.items():
+                        setattr(v, k, val)
+                    v.updated_at = utcnow()
+                    found = v
+            if found:
+                self._write_videos(episode_id, videos)
+            return found
+
+    def delete_video(self, episode_id: str, video_id: str) -> None:
+        with self._lock:
+            rest = [v for v in self.list_videos(episode_id) if v.id != video_id]
+            self._write_videos(episode_id, rest)
+            self.video_path(episode_id, video_id).unlink(missing_ok=True)
+
+    def video_path(self, episode_id: str, video_id: str) -> Path:
+        if not _ID_RE.match(video_id):
+            raise NotFound(video_id)
+        d = self.episode_dir(episode_id) / "videos"
+        d.mkdir(parents=True, exist_ok=True)
+        return d / f"{video_id}.mp4"
+
     def clear_history(self, episode_id: str) -> None:
         self._history_path(episode_id).unlink(missing_ok=True)
 
@@ -207,6 +264,45 @@ class Storage:
             )
             if profile.photo:
                 (self.photos_dir / profile.photo).unlink(missing_ok=True)
+
+    # --- Fondos propios ------------------------------------------------------
+
+    def _backgrounds_path(self) -> Path:
+        return self.backgrounds_dir / "backgrounds.json"
+
+    def list_backgrounds(self) -> list[CustomBackground]:
+        path = self._backgrounds_path()
+        if not path.exists():
+            return []
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return sorted((CustomBackground.model_validate(b) for b in data), key=lambda b: b.created_at)
+
+    def get_background(self, background_id: str) -> CustomBackground:
+        b = next((b for b in self.list_backgrounds() if b.id == background_id), None)
+        if b is None:
+            raise NotFound(background_id)
+        return b
+
+    def background_file(self, background: CustomBackground) -> Path:
+        return self.backgrounds_dir / background.file
+
+    def _write_backgrounds(self, items: list[CustomBackground]) -> None:
+        _write_atomic(
+            self._backgrounds_path(),
+            json.dumps([b.model_dump(mode="json") for b in items], ensure_ascii=False, indent=2),
+        )
+
+    def add_background(self, background: CustomBackground, data: bytes) -> CustomBackground:
+        with self._lock:
+            (self.backgrounds_dir / background.file).write_bytes(data)
+            self._write_backgrounds(self.list_backgrounds() + [background])
+        return background
+
+    def delete_background(self, background_id: str) -> None:
+        with self._lock:
+            b = self.get_background(background_id)
+            self._write_backgrounds([x for x in self.list_backgrounds() if x.id != background_id])
+            self.background_file(b).unlink(missing_ok=True)
 
 
 def _write_atomic(path: Path, text: str) -> None:

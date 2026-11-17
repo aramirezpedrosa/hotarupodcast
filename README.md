@@ -46,7 +46,30 @@ anima el perfil de quien habla.
 - El episodio limpio se escucha y se descarga en MP3. Si después se corrigen tramos de voz,
   se avisa de que hay que volver a limpiarlo.
 
-Próximas fases: render de vídeo · reconocimiento de invitados recurrentes.
+**Fase 4: vídeo con el interviniente que habla animado.**
+
+- Dos plantillas: **Mesa redonda** (todos a la vez; el que habla se ilumina) y **Foco**
+  (el que habla, grande en el centro, con fundido al cambiar de interviniente; el resto,
+  en miniatura abajo).
+- Cuatro formatos: 16:9 (1920×1080), 9:16 (1080×1920), 1:1 (1080×1080) y 4:5 (1080×1350).
+- El avatar del que habla late con su voz: crece un poco y le salen un halo y un anillo
+  de su color, según el volumen de cada fotograma, suavizado en unos 150 ms para que no
+  parpadee. Opcionalmente se atenúa a los que no hablan.
+- Usa el nombre, el cargo, la foto y el color de cada interviniente, o sus iniciales si no
+  tiene foto, y el título del episodio. Puede llevar el audio limpio de la fase 3.
+- Vista previa instantánea de un fotograma con el formato elegido; el render va en segundo
+  plano con barra de progreso, y el resultado se descarga en MP4 (H.264 + AAC).
+- Se dibuja con Pillow y se codifica con FFmpeg: no hace falta Node ni un navegador en el
+  servidor. Como referencia, en un servidor de 4 núcleos un minuto de vídeo 1080p tarda
+  unos 17 s en generarse.
+- Fondos: liso o cinco paisajes de naturaleza generados (bosque entre la niebla, montañas
+  al atardecer, océano al anochecer, aurora boreal y pradera a la hora dorada), en
+  cualquier formato. También se pueden subir fotos propias (JPG, PNG o WebP, hasta 15 MB),
+  que se recortan al formato y se oscurecen con una viñeta. Los rótulos llevan una sombra
+  suave para leerse sobre cualquier fondo. El fondo es fijo, así que no ralentiza el render.
+
+Próximas fases: reconocimiento de invitados recurrentes · más plantillas (cara a cara,
+audiograma, subtítulos protagonistas) y estilos de animación (ondas, barras).
 
 ## Estructura
 
@@ -56,7 +79,7 @@ frontend/  Interfaz web (React + Vite)
 ```
 
 Los datos se guardan en disco: una carpeta por episodio en `data/episodes/<id>/` y los
-intervinientes en `data/profiles/`.
+intervinientes en `data/profiles/`; las fotos de fondo, en `data/backgrounds/`.
 
 ## Puesta en marcha
 

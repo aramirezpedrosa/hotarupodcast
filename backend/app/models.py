@@ -86,6 +86,43 @@ class Cleanup(BaseModel):
     stale: bool = False
 
 
+class VideoTemplate(str, Enum):
+    mesa = "mesa"
+    foco = "foco"
+
+
+class VideoAspect(str, Enum):
+    horizontal = "16:9"
+    vertical = "9:16"
+    cuadrado = "1:1"
+    retrato = "4:5"
+
+
+class VideoSettings(BaseModel):
+    template: VideoTemplate = VideoTemplate.mesa
+    aspect: VideoAspect = VideoAspect.horizontal
+    # Los que no hablan se ven más apagados.
+    dim_others: bool = True
+    show_names: bool = True
+    show_title: bool = True
+    # Usar el audio limpio si existe (fase 3); si no, el original.
+    use_cleaned_audio: bool = True
+    # Fondo: id de un paisaje de naturaleza ("bosque", "aurora"…) o de una foto subida.
+    background: str = Field(default="liso", min_length=1, max_length=64)
+
+
+class Video(BaseModel):
+    id: str
+    settings: VideoSettings
+    status: EpisodeStatus = EpisodeStatus.pending
+    progress: float = 0.0
+    error: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+    # Qué audio se usó: "limpio" u "original".
+    audio: str | None = None
+
+
 class Episode(BaseModel):
     id: str
     title: str
@@ -100,6 +137,8 @@ class Episode(BaseModel):
     voices: list[Voice] = Field(default_factory=list)
     segments: list[Segment] = Field(default_factory=list)
     cleanup: Cleanup | None = None
+    # Se guardan aparte (videos.json) para que el progreso del render no pise ediciones.
+    videos: list[Video] = Field(default_factory=list)
     # Calculados al responder; no se guardan en disco.
     can_undo: bool = False
     can_redo: bool = False
@@ -165,3 +204,21 @@ class ReassignRequest(BaseModel):
     # Voz destino; null crea una voz nueva.
     voice_id: str | None = None
 
+
+
+class CustomBackground(BaseModel):
+    """Foto propia subida para usar como fondo de vídeo."""
+
+    id: str
+    name: str = Field(min_length=1, max_length=120)
+    file: str
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class BackgroundOption(BaseModel):
+    """Un fondo elegible en el panel de vídeo: paisaje generado o foto propia."""
+
+    id: str
+    name: str
+    description: str | None = None
+    kind: str  # "preset" | "custom"
