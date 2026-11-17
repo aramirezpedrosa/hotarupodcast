@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { api, Episode, Profile, Video, VideoAspect, VideoSettings, VideoTemplate } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { api, BackgroundOption, Episode, Profile, Video, VideoAspect, VideoSettings, VideoTemplate } from "./api";
 
 const TEMPLATES: { value: VideoTemplate; label: string; help: string }[] = [
   { value: "mesa", label: "Mesa redonda", help: "Todos a la vez; el que habla se ilumina y late con su voz." },
@@ -27,6 +27,7 @@ const DEFAULTS: VideoSettings = {
   show_names: true,
   show_title: true,
   use_cleaned_audio: true,
+  background: "liso",
 };
 
 export default function VideoPanel({
@@ -52,6 +53,38 @@ export default function VideoPanel({
     );
     return () => window.clearTimeout(t);
   }, [episode.id, settings, speaker, voicesKey]);
+
+  const [backgrounds, setBackgrounds] = useState<BackgroundOption[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    api.listBackgrounds().then(setBackgrounds).catch((e) => setError((e as Error).message));
+  }, []);
+
+  async function uploadBackground(file: File) {
+    setUploading(true);
+    setError(null);
+    try {
+      const b = await api.uploadBackground(file);
+      setBackgrounds((list) => [...list, b]);
+      set({ background: b.id });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
+  async function removeBackground(b: BackgroundOption) {
+    try {
+      await api.deleteBackground(b.id);
+      setBackgrounds((list) => list.filter((x) => x.id !== b.id));
+      if (settings.background === b.id) set({ background: "liso" });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   const cleanedReady = episode.cleanup?.status === "done";
   const set = (patch: Partial<VideoSettings>) => setSettings((s) => ({ ...s, ...patch }));
@@ -120,6 +153,55 @@ export default function VideoPanel({
                 <span className="muted small">{a.help}</span>
               </label>
             ))}
+          </fieldset>
+
+          <fieldset className="choice-group">
+            <legend className="small">Fondo</legend>
+            <div className="backgrounds">
+              {backgrounds.map((b) => (
+                <div key={b.id} className={`bg-tile ${settings.background === b.id ? "bg-on" : ""}`}>
+                  <button
+                    type="button"
+                    className="bg-pick"
+                    title={b.description ?? b.name}
+                    aria-pressed={settings.background === b.id}
+                    onClick={() => set({ background: b.id })}
+                  >
+                    <img src={api.backgroundThumbUrl(b.id, "16:9", 240)} alt="" loading="lazy" />
+                    <span>{b.name}</span>
+                  </button>
+                  {b.kind === "custom" && (
+                    <button
+                      type="button"
+                      className="bg-remove"
+                      title="Quitar esta foto"
+                      aria-label={`Quitar ${b.name}`}
+                      onClick={() => removeBackground(b)}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                className="bg-tile bg-upload"
+                disabled={uploading}
+                onClick={() => fileInput.current?.click()}
+              >
+                <span>{uploading ? "Subiendo…" : "+ Tu foto"}</span>
+              </button>
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                onChange={(e) => e.target.files?.[0] && uploadBackground(e.target.files[0])}
+              />
+            </div>
+            <span className="muted small">
+              Las fotos propias se recortan al formato y se oscurecen un poco para que se lean los nombres.
+            </span>
           </fieldset>
 
           <label className="check">

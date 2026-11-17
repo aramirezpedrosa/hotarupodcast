@@ -19,9 +19,11 @@ from fastapi.responses import FileResponse, Response
 from .audio import AudioError, cut_clip
 from .cleanup import CleanupOptions, Strength, clean_audio
 from .config import Settings, get_settings
-from .jobs import JobRunner, participants_for
+from .jobs import JobRunner, UnknownBackground, participants_for, video_options
 from .models import (
+    BackgroundOption,
     Cleanup,
+    CustomBackground,
     CleanupSettings,
     CleanupStrength,
     Episode,
@@ -46,6 +48,7 @@ from .storage import NotFound, Storage
 # Fotos de perfil admitidas y tamaño máximo.
 PHOTO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
+MAX_BACKGROUND_BYTES = 15 * 1024 * 1024
 
 ALLOWED_EXT = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".webm", ".mp4", ".mov"}
 
@@ -314,26 +317,29 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         dim_others: bool = True,
         show_names: bool = True,
         show_title: bool = True,
+        background: str = Query("liso", min_length=1, max_length=64),
         speaker: str | None = None,
         width: int = Query(640, ge=120, le=1920),
     ):
         """Un fotograma de ejemplo con el formato elegido (sin generar el vídeo)."""
         import io
 
-        from .video import Aspect, FrameRenderer, Template, VideoOptions
+        from .video import FrameRenderer
 
         ep = editable(episode_id)
         participants, _ = participants_for(ep, storage)
         if not participants:
             raise HTTPException(409, "El episodio no tiene intervinientes")
         active = next((i for i, p in enumerate(participants) if p.voice_id == speaker), 0)
-        renderer = FrameRenderer(
-            participants,
-            VideoOptions(
-                Template(template.value), Aspect(aspect.value), dim_others, show_names,
-                ep.title if show_title else None,
-            ),
+        cfg = VideoSettings(
+            template=template, aspect=aspect, dim_others=dim_others, show_names=show_names,
+            show_title=show_title, background=background,
         )
+        try:
+            opts = video_options(ep, cfg, storage)
+        except UnknownBackground as e:
+            raise HTTPException(422, str(e))
+        renderer = FrameRenderer(participants, opts)
         img = renderer.still(active, 0.7)
         img.thumbnail((width, width * 2))
         buf = io.BytesIO()
@@ -345,6 +351,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         ep = editable(episode_id)
         if not ep.voices:
             raise HTTPException(409, "El episodio no tiene intervinientes")
+        try:
+            video_options(ep, body, storage)
+        except UnknownBackground as e:
+            raise HTTPException(422, str(e))
         video = Video(id=uuid.uuid4().hex[:12], settings=body)
         storage.add_video(ep.id, video)
         runner.submit_video(ep.id, video.id)
@@ -374,6 +384,66 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             raise HTTPException(409, "Espera a que termine el vídeo para borrarlo")
         storage.delete_video(episode_id, video_id)
         return storage.load(episode_id)
+
+    # --- Fondos de vídeo ---------------------------------------------------
+
+    @app.get("/api/backgrounds", response_model=list[BackgroundOption])
+    def list_backgrounds():
+        """Paisajes de naturaleza generados y fotos propias subidas."""
+        from .backgrounds import PRESETS
+
+        return [BackgroundOption(id=p.id, name=p.name, description=p.description, kind="preset") for p in PRESETS] + [
+            BackgroundOption(id=b.id, name=b.name, kind="custom") for b in storage.list_backgrounds()
+        ]
+
+    @app.post("/api/backgrounds", response_model=BackgroundOption, status_code=201)
+    def upload_background(file: UploadFile = File(...), name: str | None = Form(None)):
+        ext = PHOTO_TYPES.get(file.content_type or "")
+        if ext is None:
+            raise HTTPException(415, "El fondo debe ser JPG, PNG o WebP")
+        data = file.file.read(MAX_BACKGROUND_BYTES + 1)
+        if len(data) > MAX_BACKGROUND_BYTES:
+            raise HTTPException(413, "El fondo no puede pasar de 15 MB")
+        if not _looks_like_image(data, ext):
+            raise HTTPException(415, "El archivo no parece una imagen válida")
+        bid = f"foto-{uuid.uuid4().hex[:10]}"
+        label = (name or Path(file.filename or "").stem or "Foto propia").strip()[:120] or "Foto propia"
+        b = storage.add_background(CustomBackground(id=bid, name=label, file=bid + ext), data)
+        return BackgroundOption(id=b.id, name=b.name, kind="custom")
+
+    @app.delete("/api/backgrounds/{background_id}", status_code=204)
+    def delete_background(background_id: str):
+        try:
+            storage.delete_background(background_id)
+        except NotFound:
+            raise HTTPException(404, "Fondo no encontrado")
+        return Response(status_code=204)
+
+    @app.get("/api/backgrounds/{background_id}/thumb.jpg")
+    def background_thumb(
+        background_id: str,
+        aspect: VideoAspect = VideoAspect.horizontal,
+        width: int = Query(320, ge=60, le=1280),
+    ):
+        """Miniatura del fondo en el formato pedido."""
+        import io
+
+        from .backgrounds import PRESET_IDS, make_background
+        from .video import SIZES, Aspect
+
+        fw, fh = SIZES[Aspect(aspect.value)]
+        size = (width, max(1, round(width * fh / fw)))
+        if background_id in PRESET_IDS:
+            img = make_background(background_id, size)
+        else:
+            try:
+                path = storage.background_file(storage.get_background(background_id))
+            except NotFound:
+                raise HTTPException(404, "Fondo no encontrado")
+            img = make_background(None, size, path)
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, "JPEG", quality=85)
+        return Response(buf.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
 
     # --- Perfiles de intervinientes ----------------------------------------
 

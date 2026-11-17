@@ -29,6 +29,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 from .audio import AudioError
+from .backgrounds import make_background
 
 FPS = 25
 # Niveles de volumen precalculados para la animación (0 = en silencio).
@@ -82,9 +83,23 @@ class VideoOptions:
     dim_others: bool = True
     show_names: bool = True
     title: str | None = None
+    background: str = "liso"             # id de preset de naturaleza
+    background_image: Path | None = None  # foto propia (tiene prioridad)
 
 
 # --- Utilidades de dibujo -------------------------------------------------------
+
+
+def _shadowed_text(img: Image.Image, xy, text: str, f, fill, anchor: str) -> None:
+    """Texto con una sombra difuminada debajo, para que se lea sobre fondos con imagen."""
+    size = getattr(f, "size", 20)
+    shadow = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).text(
+        (xy[0], xy[1] + max(1, size * 0.05)), text, font=f, fill=(0, 0, 0, 200), anchor=anchor,
+        stroke_width=max(1, int(size * 0.08)), stroke_fill=(0, 0, 0, 200),
+    )
+    img.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(max(1.5, size * 0.12))))
+    ImageDraw.Draw(img).text(xy, text, font=f, fill=fill, anchor=anchor)
 
 _FONT_CANDIDATES = {
     True: [
@@ -265,12 +280,12 @@ class FrameRenderer:
         self.W, self.H = self.layout.size
         self._patches: dict[tuple, np.ndarray] = {}
 
-        bg = Image.new("RGB", (self.W, self.H), BACKGROUND)
+        bg = make_background(opts.background, (self.W, self.H), opts.background_image).convert("RGBA")
         if self.layout.title_box and opts.title:
             x, y, w, h = self.layout.title_box
             text, f = fit_text(opts.title, int(h * 0.55), True, w)
-            ImageDraw.Draw(bg).text((x + w / 2, y + h / 2), text, font=f, fill=TEXT, anchor="mm")
-        self.bg = np.asarray(bg).copy()
+            _shadowed_text(bg, (x + w / 2, y + h / 2), text, f, TEXT, "mm")
+        self.bg = np.asarray(bg.convert("RGB")).copy()
 
         # Fondo con todos en reposo; el hueco grande de "foco" empieza con el primero.
         self.base = self.bg.copy()
@@ -322,14 +337,13 @@ class FrameRenderer:
         img.alpha_composite(av, (int(cx - d / 2), int(cy - d / 2)))
 
         if slot.labels:
-            draw = ImageDraw.Draw(img)
             y = cy + r * 1.32
             name, f = fit_text(p.name, slot.name_size, True, int(slot.w * 0.92))
-            draw.text((cx, y), name, font=f, fill=TEXT_MUTED if dim else TEXT, anchor="mt")
+            _shadowed_text(img, (cx, y), name, f, TEXT_MUTED if dim else TEXT, "mt")
             if p.role:
                 y += slot.name_size * 1.25
                 role, f = fit_text(p.role, slot.role_size, False, int(slot.w * 0.92))
-                draw.text((cx, y), role, font=f, fill=(110, 115, 122) if dim else TEXT_MUTED, anchor="mt")
+                _shadowed_text(img, (cx, y), role, f, (128, 133, 140) if dim else TEXT_MUTED, "mt")
 
         arr = np.asarray(img.convert("RGB")).copy()
         self._patches[key] = arr

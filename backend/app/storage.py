@@ -10,6 +10,8 @@
     data/episodes/<id>/videos/<vid>.mp4
     data/profiles/profiles.json
     data/profiles/photos/<id>-<n>.<ext>
+    data/backgrounds/backgrounds.json    (fotos propias para fondos de vídeo)
+    data/backgrounds/<id>.<ext>
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import re
 import threading
 from pathlib import Path
 
-from .models import Episode, Profile, Segment, Video, Voice, utcnow
+from .models import CustomBackground, Episode, Profile, Segment, Video, Voice, utcnow
 
 _ID_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 # Cambios que se pueden deshacer por episodio.
@@ -38,6 +40,8 @@ class Storage:
         self.root.mkdir(parents=True, exist_ok=True)
         self.profiles_root = Path(root) / "profiles"
         self.photos_dir.mkdir(parents=True, exist_ok=True)
+        self.backgrounds_dir = Path(root) / "backgrounds"
+        self.backgrounds_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
 
     def episode_dir(self, episode_id: str) -> Path:
@@ -260,6 +264,45 @@ class Storage:
             )
             if profile.photo:
                 (self.photos_dir / profile.photo).unlink(missing_ok=True)
+
+    # --- Fondos propios ------------------------------------------------------
+
+    def _backgrounds_path(self) -> Path:
+        return self.backgrounds_dir / "backgrounds.json"
+
+    def list_backgrounds(self) -> list[CustomBackground]:
+        path = self._backgrounds_path()
+        if not path.exists():
+            return []
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return sorted((CustomBackground.model_validate(b) for b in data), key=lambda b: b.created_at)
+
+    def get_background(self, background_id: str) -> CustomBackground:
+        b = next((b for b in self.list_backgrounds() if b.id == background_id), None)
+        if b is None:
+            raise NotFound(background_id)
+        return b
+
+    def background_file(self, background: CustomBackground) -> Path:
+        return self.backgrounds_dir / background.file
+
+    def _write_backgrounds(self, items: list[CustomBackground]) -> None:
+        _write_atomic(
+            self._backgrounds_path(),
+            json.dumps([b.model_dump(mode="json") for b in items], ensure_ascii=False, indent=2),
+        )
+
+    def add_background(self, background: CustomBackground, data: bytes) -> CustomBackground:
+        with self._lock:
+            (self.backgrounds_dir / background.file).write_bytes(data)
+            self._write_backgrounds(self.list_backgrounds() + [background])
+        return background
+
+    def delete_background(self, background_id: str) -> None:
+        with self._lock:
+            b = self.get_background(background_id)
+            self._write_backgrounds([x for x in self.list_backgrounds() if x.id != background_id])
+            self.background_file(b).unlink(missing_ok=True)
 
 
 def _write_atomic(path: Path, text: str) -> None:

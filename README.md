@@ -62,6 +62,11 @@ anima el perfil de quien habla.
 - Se dibuja con Pillow y se codifica con FFmpeg: no hace falta Node ni un navegador en el
   servidor. Como referencia, en un servidor de 4 núcleos un minuto de vídeo 1080p tarda
   unos 17 s en generarse.
+- Fondos: liso o cinco paisajes de naturaleza generados (bosque entre la niebla, montañas
+  al atardecer, océano al anochecer, aurora boreal y pradera a la hora dorada), en
+  cualquier formato. También se pueden subir fotos propias (JPG, PNG o WebP, hasta 15 MB),
+  que se recortan al formato y se oscurecen con una viñeta. Los rótulos llevan una sombra
+  suave para leerse sobre cualquier fondo. El fondo es fijo, así que no ralentiza el render.
 
 Próximas fases: reconocimiento de invitados recurrentes · más plantillas (cara a cara,
 audiograma, subtítulos protagonistas) y estilos de animación (ondas, barras).
@@ -74,7 +79,7 @@ frontend/  Interfaz web (React + Vite)
 ```
 
 Los datos se guardan en disco: una carpeta por episodio en `data/episodes/<id>/` y los
-intervinientes en `data/profiles/`.
+intervinientes en `data/profiles/`; las fotos de fondo, en `data/backgrounds/`.
 
 ## Puesta en marcha
 

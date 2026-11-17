@@ -72,6 +72,14 @@ export interface VideoSettings {
   show_names: boolean;
   show_title: boolean;
   use_cleaned_audio: boolean;
+  background: string;
+}
+
+export interface BackgroundOption {
+  id: string;
+  name: string;
+  description: string | null;
+  kind: "preset" | "custom";
 }
 
 export interface Video {
@@ -181,6 +189,7 @@ export const api = {
       dim_others: String(s.dim_others),
       show_names: String(s.show_names),
       show_title: String(s.show_title),
+      background: s.background,
       width: String(width),
       ...(speaker ? { speaker } : {}),
     }),
@@ -188,6 +197,15 @@ export const api = {
     request<Episode>(`/api/episodes/${id}/videos`, jsonInit("POST", s)),
   deleteVideo: (id: string, videoId: string) =>
     request<Episode>(`/api/episodes/${id}/videos/${videoId}`, { method: "DELETE" }),
+  listBackgrounds: () => request<BackgroundOption[]>("/api/backgrounds"),
+  uploadBackground: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<BackgroundOption>("/api/backgrounds", { method: "POST", body: form });
+  },
+  deleteBackground: (id: string) => request<void>(`/api/backgrounds/${id}`, { method: "DELETE" }),
+  backgroundThumbUrl: (id: string, aspect: VideoAspect, width = 240) =>
+    `/api/backgrounds/${id}/thumb.jpg?` + new URLSearchParams({ aspect, width: String(width) }),
   videoUrl: (id: string, videoId: string, download = false) =>
     `/api/episodes/${id}/videos/${videoId}/file` + (download ? "?download=true" : ""),
 

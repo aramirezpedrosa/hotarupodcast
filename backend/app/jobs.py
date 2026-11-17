@@ -80,7 +80,7 @@ class JobRunner:
         return self._pool.submit(self.process_video, episode_id, video_id)
 
     def process_video(self, episode_id: str, video_id: str) -> None:
-        from .video import Aspect, Template, VideoOptions, render_video
+        from .video import render_video
 
         ep = self.storage.load(episode_id)
         video = next((v for v in ep.videos if v.id == video_id), None)
@@ -112,10 +112,7 @@ class JobRunner:
             participants, spans = participants_for(ep, self.storage)
             render_video(
                 participants, spans, audio, ep.duration or 0,
-                VideoOptions(
-                    Template(cfg.template.value), Aspect(cfg.aspect.value),
-                    cfg.dim_others, cfg.show_names, ep.title if cfg.show_title else None,
-                ),
+                video_options(ep, cfg, self.storage),
                 self.storage.video_path(episode_id, video_id),
                 progress,
             )
@@ -160,3 +157,30 @@ def participants_for(ep, storage):
     index = {p.voice_id: i for i, p in enumerate(participants)}
     spans = [(s.start, s.end, index[s.voice_id]) for s in ep.segments if s.voice_id in index]
     return participants, spans
+
+
+class UnknownBackground(ValueError):
+    pass
+
+
+def video_options(ep, cfg, storage):
+    """Traduce los ajustes guardados del vídeo a opciones de dibujo (resolviendo el fondo)."""
+    from .backgrounds import PRESET_IDS
+    from .storage import NotFound
+    from .video import Aspect, Template, VideoOptions
+
+    preset, image = "liso", None
+    if cfg.background in PRESET_IDS:
+        preset = cfg.background
+    else:
+        try:
+            image = storage.background_file(storage.get_background(cfg.background))
+        except NotFound:
+            raise UnknownBackground("El fondo elegido ya no existe; elige otro")
+        if not image.exists():
+            raise UnknownBackground("Falta el archivo del fondo elegido; súbelo de nuevo")
+    return VideoOptions(
+        Template(cfg.template.value), Aspect(cfg.aspect.value),
+        cfg.dim_others, cfg.show_names, ep.title if cfg.show_title else None,
+        background=preset, background_image=image,
+    )

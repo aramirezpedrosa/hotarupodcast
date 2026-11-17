@@ -107,6 +107,8 @@ class VideoSettings(BaseModel):
     show_title: bool = True
     # Usar el audio limpio si existe (fase 3); si no, el original.
     use_cleaned_audio: bool = True
+    # Fondo: id de un paisaje de naturaleza ("bosque", "aurora"…) o de una foto subida.
+    background: str = Field(default="liso", min_length=1, max_length=64)
 
 
 class Video(BaseModel):
@@ -202,3 +204,21 @@ class ReassignRequest(BaseModel):
     # Voz destino; null crea una voz nueva.
     voice_id: str | None = None
 
+
+
+class CustomBackground(BaseModel):
+    """Foto propia subida para usar como fondo de vídeo."""
+
+    id: str
+    name: str = Field(min_length=1, max_length=120)
+    file: str
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class BackgroundOption(BaseModel):
+    """Un fondo elegible en el panel de vídeo: paisaje generado o foto propia."""
+
+    id: str
+    name: str
+    description: str | None = None
+    kind: str  # "preset" | "custom"

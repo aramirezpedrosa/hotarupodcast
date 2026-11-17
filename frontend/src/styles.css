@@ -349,6 +349,51 @@ h3 { font-size: 1rem; margin: 20px 0 8px; }
 .video-row .button-secondary { margin-left: auto; }
 .progress > div { background: var(--accent); }
 
+/* Fondos del vídeo */
+.backgrounds { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.bg-tile {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card);
+}
+.bg-on { border-color: var(--accent); outline: 2px solid var(--accent); }
+.bg-pick {
+  display: grid;
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
+.bg-pick img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #111418; }
+.bg-pick span { padding: 4px 8px; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bg-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  line-height: 1;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+}
+.bg-upload {
+  display: grid;
+  place-items: center;
+  min-height: 72px;
+  color: var(--muted);
+  border-style: dashed;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
 @media (max-width: 760px) {
   .video-grid { grid-template-columns: 1fr; }
 }
