@@ -5,6 +5,7 @@ import CleanupPanel from "./CleanupPanel";
 import Modal from "./Modal";
 import ProfileForm from "./ProfileForm";
 import StatusBadge from "./StatusBadge";
+import VideoPanel from "./VideoPanel";
 
 const POLL_MS = 2000;
 const PUNCT = /^[,.;:!?)»…]/;
@@ -47,7 +48,8 @@ export default function EpisodeView({ id }: { id: string }) {
     episode?.status === "pending" ||
     episode?.status === "processing" ||
     episode?.cleanup?.status === "pending" ||
-    episode?.cleanup?.status === "processing";
+    episode?.cleanup?.status === "processing" ||
+    !!episode?.videos?.some((v) => v.status === "pending" || v.status === "processing");
   useEffect(() => {
     if (!working) return;
     const timer = window.setInterval(() => {
@@ -159,6 +161,7 @@ export default function EpisodeView({ id }: { id: string }) {
             getPlayerTime={() => audioRef.current?.currentTime ?? 0}
             onChange={setEpisode}
           />
+          <VideoPanel episode={episode} profileMap={profileMap} onChange={setEpisode} />
           {editError && (
             <div className="toast error" role="alert">
               {editError}

@@ -13,13 +13,13 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 
 from .audio import AudioError, cut_clip
 from .cleanup import CleanupOptions, Strength, clean_audio
 from .config import Settings, get_settings
-from .jobs import JobRunner
+from .jobs import JobRunner, participants_for
 from .models import (
     Cleanup,
     CleanupSettings,
@@ -33,6 +33,10 @@ from .models import (
     ProfilePatch,
     ReassignRequest,
     SpeakerHints,
+    Video,
+    VideoAspect,
+    VideoSettings,
+    VideoTemplate,
     VoicePatch,
 )
 from .pipeline import Engine, create_engine
@@ -59,6 +63,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
                 runner.submit(ep.id)
             elif ep.cleanup and ep.cleanup.status in (EpisodeStatus.pending, EpisodeStatus.processing):
                 runner.submit_cleanup(ep.id)
+            for v in ep.videos:
+                if v.status in (EpisodeStatus.pending, EpisodeStatus.processing):
+                    runner.submit_video(ep.id, v.id)
         yield
         runner.shutdown()
 
@@ -296,6 +303,77 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             except AudioError as e:
                 raise HTTPException(500, f"No se pudo generar la escucha previa: {e}")
         return FileResponse(out, media_type="audio/mpeg")
+
+    # --- Vídeo -------------------------------------------------------------
+
+    @app.get("/api/episodes/{episode_id}/video/preview.png")
+    def video_preview(
+        episode_id: str,
+        template: VideoTemplate = VideoTemplate.mesa,
+        aspect: VideoAspect = VideoAspect.horizontal,
+        dim_others: bool = True,
+        show_names: bool = True,
+        show_title: bool = True,
+        speaker: str | None = None,
+        width: int = Query(640, ge=120, le=1920),
+    ):
+        """Un fotograma de ejemplo con el formato elegido (sin generar el vídeo)."""
+        import io
+
+        from .video import Aspect, FrameRenderer, Template, VideoOptions
+
+        ep = editable(episode_id)
+        participants, _ = participants_for(ep, storage)
+        if not participants:
+            raise HTTPException(409, "El episodio no tiene intervinientes")
+        active = next((i for i, p in enumerate(participants) if p.voice_id == speaker), 0)
+        renderer = FrameRenderer(
+            participants,
+            VideoOptions(
+                Template(template.value), Aspect(aspect.value), dim_others, show_names,
+                ep.title if show_title else None,
+            ),
+        )
+        img = renderer.still(active, 0.7)
+        img.thumbnail((width, width * 2))
+        buf = io.BytesIO()
+        img.save(buf, "PNG", optimize=True)
+        return Response(buf.getvalue(), media_type="image/png", headers={"Cache-Control": "no-cache"})
+
+    @app.post("/api/episodes/{episode_id}/videos", response_model=Episode, status_code=201)
+    def create_video(episode_id: str, body: VideoSettings):
+        ep = editable(episode_id)
+        if not ep.voices:
+            raise HTTPException(409, "El episodio no tiene intervinientes")
+        video = Video(id=uuid.uuid4().hex[:12], settings=body)
+        storage.add_video(ep.id, video)
+        runner.submit_video(ep.id, video.id)
+        return storage.load(ep.id)
+
+    @app.get("/api/episodes/{episode_id}/videos/{video_id}/file")
+    def video_file(episode_id: str, video_id: str, download: bool = False):
+        ep = load(episode_id)
+        video = next((v for v in ep.videos if v.id == video_id), None)
+        if video is None or video.status != EpisodeStatus.done:
+            raise HTTPException(404, "Vídeo no disponible")
+        fmt = video.settings.aspect.value.replace(":", "x")
+        return FileResponse(
+            storage.video_path(episode_id, video_id),
+            media_type="video/mp4",
+            filename=f"{ep.title} ({video.settings.template.value} {fmt}).mp4",
+            content_disposition_type="attachment" if download else "inline",
+        )
+
+    @app.delete("/api/episodes/{episode_id}/videos/{video_id}", response_model=Episode)
+    def delete_video(episode_id: str, video_id: str):
+        ep = load(episode_id)
+        video = next((v for v in ep.videos if v.id == video_id), None)
+        if video is None:
+            raise HTTPException(404, "Vídeo no encontrado")
+        if video.status in (EpisodeStatus.pending, EpisodeStatus.processing):
+            raise HTTPException(409, "Espera a que termine el vídeo para borrarlo")
+        storage.delete_video(episode_id, video_id)
+        return storage.load(episode_id)
 
     # --- Perfiles de intervinientes ----------------------------------------
 

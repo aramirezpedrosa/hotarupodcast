@@ -62,6 +62,28 @@ export interface Cleanup {
   stale: boolean;
 }
 
+export type VideoTemplate = "mesa" | "foco";
+export type VideoAspect = "16:9" | "9:16" | "1:1" | "4:5";
+
+export interface VideoSettings {
+  template: VideoTemplate;
+  aspect: VideoAspect;
+  dim_others: boolean;
+  show_names: boolean;
+  show_title: boolean;
+  use_cleaned_audio: boolean;
+}
+
+export interface Video {
+  id: string;
+  settings: VideoSettings;
+  status: EpisodeStatus;
+  progress: number;
+  error: string | null;
+  created_at: string;
+  audio: string | null;
+}
+
 export interface Episode {
   id: string;
   title: string;
@@ -74,6 +96,7 @@ export interface Episode {
   voices: Voice[];
   segments: Segment[];
   cleanup: Cleanup | null;
+  videos: Video[];
   can_undo: boolean;
   can_redo: boolean;
 }
@@ -149,6 +172,24 @@ export const api = {
   cleanedUrl: (ep: Episode, download = false) =>
     `/api/episodes/${ep.id}/cleanup/audio?v=${encodeURIComponent(ep.cleanup?.updated_at ?? "")}` +
     (download ? "&download=true" : ""),
+
+  videoPreviewUrl: (id: string, s: VideoSettings, speaker: string | null, width = 640) =>
+    `/api/episodes/${id}/video/preview.png?` +
+    new URLSearchParams({
+      template: s.template,
+      aspect: s.aspect,
+      dim_others: String(s.dim_others),
+      show_names: String(s.show_names),
+      show_title: String(s.show_title),
+      width: String(width),
+      ...(speaker ? { speaker } : {}),
+    }),
+  createVideo: (id: string, s: VideoSettings) =>
+    request<Episode>(`/api/episodes/${id}/videos`, jsonInit("POST", s)),
+  deleteVideo: (id: string, videoId: string) =>
+    request<Episode>(`/api/episodes/${id}/videos/${videoId}`, { method: "DELETE" }),
+  videoUrl: (id: string, videoId: string, download = false) =>
+    `/api/episodes/${id}/videos/${videoId}/file` + (download ? "?download=true" : ""),
 
   listProfiles: () => request<Profile[]>("/api/profiles"),
   createProfile: (body: ProfileInput) => request<Profile>("/api/profiles", jsonInit("POST", body)),
