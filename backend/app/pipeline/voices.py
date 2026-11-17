@@ -201,8 +201,7 @@ def merge_voices(
     for v in voices:
         if v.id in sources:
             target.source_speakers.extend(v.source_speakers)
-            if target.embedding is None:
-                target.embedding = v.embedding
+            target.embedding = _mix_embeddings(target, v)
             if target.profile_id is None:
                 target.profile_id = v.profile_id
     voices = [v for v in voices if v.id not in sources]
@@ -280,3 +279,11 @@ def reassign_words(
     voices = [v for v in voices if v.id in speaking]
     refresh_voice_stats(voices, new_segments, sample_seconds)
     return voices, new_segments, voice_id
+
+
+def _mix_embeddings(a: Voice, b: Voice) -> list[float] | None:
+    """Huella de dos voces fusionadas: media ponderada por tiempo de habla."""
+    if a.embedding is None or b.embedding is None or len(a.embedding) != len(b.embedding):
+        return a.embedding if a.embedding is not None else b.embedding
+    wa, wb = max(a.talk_time, 0.1), max(b.talk_time, 0.1)
+    return [round((x * wa + y * wb) / (wa + wb), 6) for x, y in zip(a.embedding, b.embedding)]

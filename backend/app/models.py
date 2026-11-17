@@ -57,6 +57,8 @@ class Voice(BaseModel):
     embedding: list[float] | None = None
     # Perfil del interviniente asignado por el usuario (biblioteca común a todos los episodios).
     profile_id: str | None = None
+    # Perfiles que el usuario ha dicho que no son esta voz (no se vuelven a sugerir).
+    dismissed_profiles: list[str] = Field(default_factory=list)
 
 
 class SpeakerHints(BaseModel):
@@ -184,6 +186,27 @@ class ProfilePatch(BaseModel):
     role: str | None = Field(default=None, max_length=160)
     info: str | None = Field(default=None, max_length=4000)
     color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
+class VoiceSuggestion(BaseModel):
+    """Interviniente conocido cuya huella de voz se parece a la de una voz del episodio."""
+
+    voice_id: str
+    profile_id: str
+    # Similitud coseno entre huellas (1 = idéntica).
+    similarity: float
+    # Episodios de los que sale la huella del interviniente.
+    episodes: int
+    confident: bool
+
+
+class DismissSuggestion(BaseModel):
+    profile_id: str = Field(min_length=1, max_length=64)
+
+
+class AcceptSuggestions(BaseModel):
+    # Voces cuya sugerencia se acepta; si no se indica, se aceptan todas las seguras.
+    voice_ids: list[str] | None = None
 
 
 class VoicePatch(BaseModel):
