@@ -47,6 +47,21 @@ export interface WordPosition {
   word_index: number;
 }
 
+export type CleanupStrength = "suave" | "media" | "fuerte";
+
+export interface CleanupSettings {
+  strength: CleanupStrength;
+  keep_breaths: boolean;
+}
+
+export interface Cleanup {
+  status: EpisodeStatus;
+  settings: CleanupSettings;
+  error: string | null;
+  updated_at: string;
+  stale: boolean;
+}
+
 export interface Episode {
   id: string;
   title: string;
@@ -58,6 +73,7 @@ export interface Episode {
   language: string | null;
   voices: Voice[];
   segments: Segment[];
+  cleanup: Cleanup | null;
   can_undo: boolean;
   can_redo: boolean;
 }
@@ -119,6 +135,20 @@ export const api = {
     ),
   undo: (id: string) => request<Episode>(`/api/episodes/${id}/undo`, { method: "POST" }),
   redo: (id: string) => request<Episode>(`/api/episodes/${id}/redo`, { method: "POST" }),
+
+  startCleanup: (id: string, settings: CleanupSettings) =>
+    request<Episode>(`/api/episodes/${id}/cleanup`, jsonInit("PUT", settings)),
+  cleanupPreviewUrl: (id: string, start: number, duration: number, s: CleanupSettings) =>
+    `/api/episodes/${id}/cleanup/preview?` +
+    new URLSearchParams({
+      start: start.toFixed(2),
+      duration: String(duration),
+      strength: s.strength,
+      keep_breaths: String(s.keep_breaths),
+    }),
+  cleanedUrl: (ep: Episode, download = false) =>
+    `/api/episodes/${ep.id}/cleanup/audio?v=${encodeURIComponent(ep.cleanup?.updated_at ?? "")}` +
+    (download ? "&download=true" : ""),
 
   listProfiles: () => request<Profile[]>("/api/profiles"),
   createProfile: (body: ProfileInput) => request<Profile>("/api/profiles", jsonInit("POST", body)),

@@ -89,7 +89,7 @@ button.link {
   text-decoration: underline;
 }
 
-button.button-secondary, label.button-secondary {
+button.button-secondary, label.button-secondary, a.button-secondary {
   background: none;
   color: var(--text);
   border: 1px solid var(--border);
@@ -280,7 +280,51 @@ input[type="text"], input[type="number"], textarea, select {
   max-width: 60ch;
 }
 
+/* Limpieza de audio */
+.strengths {
+  border: none;
+  padding: 0;
+  margin: 12px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+.strengths legend { margin-bottom: 6px; }
+.strength {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.strength input { grid-row: span 2; align-self: start; margin-top: 3px; }
+.strength-on { border-color: var(--accent); outline: 1px solid var(--accent); }
+.check { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.preview {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.preview-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.preview-head .button-secondary { margin-left: auto; }
+.ab { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.ab label { display: grid; gap: 4px; }
+.ab audio, .cleaned audio { width: 100%; }
+.cleaned { display: grid; gap: 8px; margin-top: 12px; justify-items: start; }
+a.button-secondary { text-decoration: none; display: inline-block; }
+.warning {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #eab30826;
+  border: 1px solid #eab30880;
+}
+
 @media (max-width: 600px) {
+  .ab { grid-template-columns: 1fr; }
   .upload-form { grid-template-columns: 1fr; }
   .card { padding: 16px; }
 }

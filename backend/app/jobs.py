@@ -6,8 +6,9 @@ import logging
 from concurrent.futures import Future, ThreadPoolExecutor
 
 from .audio import probe_duration, to_wav16k
+from .cleanup import CleanupOptions, Strength, clean_audio
 from .config import Settings
-from .models import EpisodeStatus
+from .models import EpisodeStatus, utcnow
 from .pipeline import Engine
 from .pipeline.voices import build_episode_data
 from .storage import Storage
@@ -40,6 +41,38 @@ class JobRunner:
         except Exception as e:  # el error se muestra al usuario en la interfaz
             log.exception("Fallo procesando %s", episode_id)
             ep.status, ep.error = EpisodeStatus.error, str(e) or e.__class__.__name__
+        self.storage.save(ep)
+
+    def submit_cleanup(self, episode_id: str) -> Future:
+        return self._pool.submit(self.process_cleanup, episode_id)
+
+    def process_cleanup(self, episode_id: str) -> None:
+        ep = self.storage.load(episode_id)
+        if ep.cleanup is None:
+            return
+        ep.cleanup.status, ep.cleanup.error = EpisodeStatus.processing, None
+        self.storage.save(ep)
+        settings = ep.cleanup.settings
+        # Los tramos de voz se toman en este momento; si el usuario los cambia
+        # mientras se procesa, la limpieza queda marcada como desactualizada.
+        spans = [(s.start, s.end) for s in ep.segments]
+        try:
+            clean_audio(
+                self.storage.original_path(episode_id),
+                self.storage.cleaned_path(episode_id),
+                spans,
+                CleanupOptions(Strength(settings.strength.value), settings.keep_breaths),
+            )
+            status, error = EpisodeStatus.done, None
+        except Exception as e:
+            log.exception("Fallo limpiando %s", episode_id)
+            status, error = EpisodeStatus.error, str(e) or e.__class__.__name__
+        ep = self.storage.load(episode_id)
+        if ep.cleanup is None:
+            return
+        ep.cleanup.status, ep.cleanup.error = status, error
+        ep.cleanup.updated_at = utcnow()
+        ep.cleanup.stale = [(s.start, s.end) for s in ep.segments] != spans
         self.storage.save(ep)
 
     def shutdown(self) -> None:

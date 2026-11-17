@@ -32,8 +32,21 @@ anima el perfil de quien habla.
 - Deshacer y rehacer (botones o Ctrl+Z / Ctrl+Shift+Z) para fusiones, asignaciones y
   reasignaciones; se guardan los últimos 50 cambios de cada episodio.
 
-Próximas fases: reducción de ruido en los huecos sin voz · render de vídeo ·
-reconocimiento de invitados recurrentes.
+**Fase 3: reducción de ruido en los huecos sin voz.**
+
+- Tres intensidades (suave, media, fuerte). En toda la pista se aplica un filtro paso alto
+  y una reducción de ruido espectral (FFmpeg `afftdn`) que toca poco la voz. En los huecos
+  sin voz el fondo baja además 8, 14 o 20 dB, con rampas de 120 ms: no se silencia ni
+  desaparece de golpe.
+- Los tramos de voz salen de la transcripción ya corregida, con margen antes y después.
+  La opción "Respetar respiraciones" deja más margen tras cada intervención, y las pausas
+  de menos de 0,6 s no se tocan.
+- Al final se iguala el volumen a −16 LUFS, el estándar de podcast.
+- Escucha previa de 20 s antes/después desde cualquier punto, antes de procesar todo.
+- El episodio limpio se escucha y se descarga en MP3. Si después se corrigen tramos de voz,
+  se avisa de que hay que volver a limpiarlo.
+
+Próximas fases: render de vídeo · reconocimiento de invitados recurrentes.
 
 ## Estructura
 
