@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, Response
 from .audio import AudioError, cut_clip
 from .cleanup import CleanupOptions, Strength, clean_audio
 from .config import Settings, get_settings
-from .jobs import JobRunner, UnknownBackground, participants_for, video_options
+from .jobs import JobRunner, UnknownBackground, caption_words, participants_for, video_options
 from .models import (
     BackgroundOption,
     Cleanup,
@@ -36,6 +36,7 @@ from .models import (
     ReassignRequest,
     SpeakerHints,
     Video,
+    VideoAnimation,
     VideoAspect,
     VideoSettings,
     VideoTemplate,
@@ -367,6 +368,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         show_names: bool = True,
         show_title: bool = True,
         background: str = Query("liso", min_length=1, max_length=64),
+        animation: VideoAnimation = VideoAnimation.pulso,
+        subtitles: bool = False,
         speaker: str | None = None,
         width: int = Query(640, ge=120, le=1920),
     ):
@@ -382,13 +385,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
         active = next((i for i, p in enumerate(participants) if p.voice_id == speaker), 0)
         cfg = VideoSettings(
             template=template, aspect=aspect, dim_others=dim_others, show_names=show_names,
-            show_title=show_title, background=background,
+            show_title=show_title, background=background, animation=animation, subtitles=subtitles,
         )
         try:
             opts = video_options(ep, cfg, storage)
         except UnknownBackground as e:
             raise HTTPException(422, str(e))
-        renderer = FrameRenderer(participants, opts)
+        renderer = FrameRenderer(participants, opts, caption_words(ep, participants) if subtitles else None)
         img = renderer.still(active, 0.7)
         img.thumbnail((width, width * 2))
         buf = io.BytesIO()

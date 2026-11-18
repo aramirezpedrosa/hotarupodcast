@@ -357,6 +357,9 @@ h3 { font-size: 1rem; margin: 20px 0 8px; }
 .choice-group { border: none; padding: 0; margin: 0 0 12px; display: grid; gap: 8px; }
 .choice-group legend { margin-bottom: 6px; }
 .aspects { grid-template-columns: repeat(2, 1fr); }
+.animations { grid-template-columns: repeat(3, 1fr); }
+.animations .aspect { grid-template-columns: auto 1fr; }
+@media (max-width: 1000px) { .animations { grid-template-columns: 1fr; } }
 .aspect {
   display: grid;
   grid-template-columns: auto 1fr;

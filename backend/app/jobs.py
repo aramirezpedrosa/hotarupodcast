@@ -115,6 +115,7 @@ class JobRunner:
                 video_options(ep, cfg, self.storage),
                 self.storage.video_path(episode_id, video_id),
                 progress,
+                words=caption_words(ep, participants) if cfg.subtitles else None,
             )
             self.storage.update_video(episode_id, video_id, status=EpisodeStatus.done, progress=1.0)
         except Exception as e:
@@ -167,7 +168,7 @@ def video_options(ep, cfg, storage):
     """Traduce los ajustes guardados del vídeo a opciones de dibujo (resolviendo el fondo)."""
     from .backgrounds import PRESET_IDS
     from .storage import NotFound
-    from .video import Aspect, Template, VideoOptions
+    from .video import Animation, Aspect, Template, VideoOptions
 
     preset, image = "liso", None
     if cfg.background in PRESET_IDS:
@@ -183,4 +184,15 @@ def video_options(ep, cfg, storage):
         Template(cfg.template.value), Aspect(cfg.aspect.value),
         cfg.dim_others, cfg.show_names, ep.title if cfg.show_title else None,
         background=preset, background_image=image,
+        animation=Animation(cfg.animation.value), subtitles=cfg.subtitles,
     )
+
+
+def caption_words(ep, participants):
+    """Palabras con tiempos y el índice de su interviniente, para los subtítulos."""
+    index = {p.voice_id: i for i, p in enumerate(participants)}
+    return [
+        (w.start, w.end, w.text, index[s.voice_id])
+        for s in ep.segments if s.voice_id in index
+        for w in s.words
+    ]
