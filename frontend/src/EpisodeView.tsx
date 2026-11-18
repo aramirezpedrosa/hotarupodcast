@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, Episode, formatTime, Profile, Voice, WordPosition } from "./api";
+import { api, Episode, formatTime, Profile, Voice, VoiceSuggestion, WordPosition } from "./api";
 import Avatar from "./Avatar";
 import CleanupPanel from "./CleanupPanel";
 import Modal from "./Modal";
@@ -199,6 +199,24 @@ function VoicesPanel({
   const total = episode.voices.reduce((acc, v) => acc + v.talk_time, 0) || 1;
   const assigned = new Set(episode.voices.map((v) => v.profile_id).filter(Boolean));
 
+  // Intervinientes de otros episodios que suenan como alguna voz sin asignar.
+  const [suggestions, setSuggestions] = useState<VoiceSuggestion[]>([]);
+  const suggestKey =
+    episode.voices.map((v) => `${v.id}:${v.profile_id}:${v.dismissed_profiles.join(",")}`).join("|") +
+    `#${profiles.map((p) => p.id).join(",")}`;
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .suggestions(episode.id)
+      .then((s) => !cancelled && setSuggestions(s))
+      .catch(() => !cancelled && setSuggestions([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [episode.id, suggestKey]);
+  const suggestionFor = Object.fromEntries(suggestions.map((s) => [s.voice_id, s]));
+  const confident = suggestions.filter((s) => s.confident && profileMap[s.profile_id]);
+
   const toggle = (vid: string) =>
     setSelected((s) => (s.includes(vid) ? s.filter((x) => x !== vid) : [...s, vid]));
 
@@ -219,6 +237,18 @@ function VoicesPanel({
         Escucha la muestra de cada voz y asígnale su interviniente. Si dos voces son la misma
         persona, márcalas y fusiónalas.
       </p>
+      {confident.length > 0 && (
+        <div className="recognised">
+          <span>
+            🔎 Reconozco por la voz a{" "}
+            <strong>{listNames(confident.map((s) => profileMap[s.profile_id].name))}</strong> de otros
+            episodios.
+          </span>
+          <button disabled={busy} onClick={() => edit(() => api.acceptSuggestions(episode.id))}>
+            {confident.length === 1 ? "Asignar" : "Asignar a todos"}
+          </button>
+        </div>
+      )}
       <ul className="voices">
         {episode.voices.map((v) => {
           const profile = v.profile_id ? profileMap[v.profile_id] : undefined;
@@ -254,6 +284,37 @@ function VoicesPanel({
               {v.sample && (
                 <audio controls preload="none" src={api.sampleUrl(episode.id, v)} className="sample" />
               )}
+              {(() => {
+                const sug = suggestionFor[v.id];
+                const who = sug && profileMap[sug.profile_id];
+                if (!sug || !who) return null;
+                return (
+                  <div className={`suggestion ${sug.confident ? "suggestion-sure" : ""}`}>
+                    <Avatar profile={who} fallback={initials(who.name)} color={who.color} size={32} />
+                    <span className="suggestion-text">
+                      <span>
+                        ¿Es <strong>{who.name}</strong>?
+                      </span>
+                      <span className="muted small">
+                        {Math.round(sug.similarity * 100)} % de parecido
+                        {sug.episodes > 1 ? ` con su voz en ${sug.episodes} episodios` : " con su voz en otro episodio"}
+                      </span>
+                    </span>
+                    <span className="suggestion-actions">
+                      <button disabled={busy} onClick={() => void assign(v, sug.profile_id)}>
+                        Sí
+                      </button>
+                      <button
+                        className="button-secondary"
+                        disabled={busy}
+                        onClick={() => edit(() => api.dismissSuggestion(episode.id, v.id, sug.profile_id))}
+                      >
+                        No es
+                      </button>
+                    </span>
+                  </div>
+                );
+              })()}
               <div className="assign-row">
                 <select
                   value={v.profile_id ?? ""}
@@ -480,4 +541,14 @@ function Transcript({
       )}
     </section>
   );
+}
+
+function listNames(names: string[]): string {
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }

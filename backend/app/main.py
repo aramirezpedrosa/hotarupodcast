@@ -40,9 +40,13 @@ from .models import (
     VideoSettings,
     VideoTemplate,
     VoicePatch,
+    VoiceSuggestion,
+    DismissSuggestion,
+    AcceptSuggestions,
 )
 from .pipeline import Engine, create_engine
 from .pipeline.voices import EditError, PALETTE, WordRef, merge_voices, reassign_words
+from .recognition import profile_voiceprints, suggest
 from .storage import NotFound, Storage
 
 # Fotos de perfil admitidas y tamaño máximo.
@@ -214,12 +218,57 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
                     )
                 voice.profile_id = profile.id
                 voice.color = profile.color
+                if profile.id in voice.dismissed_profiles:
+                    voice.dismissed_profiles.remove(profile.id)
             else:
                 voice.profile_id = None
         if body.label is not None:
             voice.label = body.label
         if body.color is not None:
             voice.color = body.color
+        return storage.save_edit(before, ep)
+
+    # --- Reconocer intervinientes conocidos por su voz ------------------------
+
+    def suggestions_for(ep: Episode) -> list[VoiceSuggestion]:
+        profiles = {p.id for p in storage.list_profiles()}
+        prints = profile_voiceprints(storage.root, exclude=ep.id)
+        return suggest(ep, prints, settings.match_threshold, settings.match_confident, profiles)
+
+    @app.get("/api/episodes/{episode_id}/suggestions", response_model=list[VoiceSuggestion])
+    def get_suggestions(episode_id: str):
+        """Intervinientes de otros episodios cuya voz se parece a las voces sin asignar."""
+        ep = load(episode_id)
+        if ep.status != EpisodeStatus.done:
+            return []
+        return suggestions_for(ep)
+
+    @app.post("/api/episodes/{episode_id}/suggestions/accept", response_model=Episode)
+    def accept_suggestions(episode_id: str, body: AcceptSuggestions):
+        """Asigna de una vez las sugerencias de las voces indicadas (o todas las seguras)."""
+        ep = editable(episode_id)
+        before = storage.snapshot(ep)
+        wanted = set(body.voice_ids) if body.voice_ids is not None else None
+        by_id = {v.id: v for v in ep.voices}
+        changed = False
+        for sug in suggestions_for(ep):
+            if (sug.voice_id in wanted) if wanted is not None else sug.confident:
+                profile = storage.get_profile(sug.profile_id)
+                by_id[sug.voice_id].profile_id = profile.id
+                by_id[sug.voice_id].color = profile.color
+                changed = True
+        return storage.save_edit(before, ep) if changed else ep
+
+    @app.post("/api/episodes/{episode_id}/voices/{voice_id}/dismiss", response_model=Episode)
+    def dismiss_suggestion(episode_id: str, voice_id: str, body: DismissSuggestion):
+        """"No es esta persona": deja de sugerir ese interviniente para esa voz."""
+        ep = editable(episode_id)
+        before = storage.snapshot(ep)
+        voice = next((v for v in ep.voices if v.id == voice_id), None)
+        if voice is None:
+            raise HTTPException(404, "Voz no encontrada")
+        if body.profile_id not in voice.dismissed_profiles:
+            voice.dismissed_profiles.append(body.profile_id)
         return storage.save_edit(before, ep)
 
     @app.post("/api/episodes/{episode_id}/segments/reassign", response_model=Episode)

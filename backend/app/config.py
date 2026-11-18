@@ -30,6 +30,10 @@ class Settings:
     diarization_model: str | None = field(default_factory=lambda: _env("DIARIZATION_MODEL"))
     # Duración máxima del clip de muestra de cada voz, en segundos.
     sample_seconds: float = field(default_factory=lambda: float(_env("SAMPLE_SECONDS", "6")))
+    # Parecido mínimo (similitud coseno) para sugerir un interviniente conocido en una voz,
+    # y a partir del cual la sugerencia se marca como segura.
+    match_threshold: float = field(default_factory=lambda: float(_env("MATCH_THRESHOLD", "0.5")))
+    match_confident: float = field(default_factory=lambda: float(_env("MATCH_CONFIDENT", "0.7")))
 
 
 def get_settings() -> Settings:

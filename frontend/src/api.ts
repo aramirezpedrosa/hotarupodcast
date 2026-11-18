@@ -24,6 +24,15 @@ export interface Voice {
   segment_count: number;
   sample: { start: number; end: number } | null;
   profile_id: string | null;
+  dismissed_profiles: string[];
+}
+
+export interface VoiceSuggestion {
+  voice_id: string;
+  profile_id: string;
+  similarity: number;
+  episodes: number;
+  confident: boolean;
 }
 
 export interface Profile {
@@ -149,6 +158,17 @@ export const api = {
     request<Episode>("/api/episodes", { method: "POST", body: form }),
   reprocess: (id: string) =>
     request<Episode>(`/api/episodes/${id}/reprocess`, { method: "POST" }),
+  suggestions: (id: string) => request<VoiceSuggestion[]>(`/api/episodes/${id}/suggestions`),
+  acceptSuggestions: (id: string, voiceIds?: string[]) =>
+    request<Episode>(
+      `/api/episodes/${id}/suggestions/accept`,
+      jsonInit("POST", voiceIds ? { voice_ids: voiceIds } : {}),
+    ),
+  dismissSuggestion: (id: string, voiceId: string, profileId: string) =>
+    request<Episode>(
+      `/api/episodes/${id}/voices/${voiceId}/dismiss`,
+      jsonInit("POST", { profile_id: profileId }),
+    ),
   mergeVoices: (id: string, targetId: string, sourceIds: string[]) =>
     request<Episode>(
       `/api/episodes/${id}/voices/merge`,

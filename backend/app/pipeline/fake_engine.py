@@ -5,7 +5,10 @@
 
 from __future__ import annotations
 
+import zlib
 from pathlib import Path
+
+import numpy as np
 
 from ..audio import probe_duration
 from ..models import SpeakerHints
@@ -17,6 +20,9 @@ _PHRASES = [
     "Exacto, y tenemos varias preguntas preparadas.",
     "Me parece una idea estupenda, empecemos.",
 ]
+
+
+FAKE_DIM = 64
 
 
 class FakeEngine:
@@ -36,4 +42,11 @@ class FakeEngine:
             for i, w in enumerate(phrase):
                 words.append(RawWord(w, round(t + i * step, 3), round(t + (i + 0.9) * step, 3), spk))
             t, turn = end, turn + 1
-        return EngineResult(language="es", words=words)
+        # Huellas de voz inventadas pero estables: SPEAKER_00 "suena" igual en todos los
+        # episodios, con un poco de variación, para probar el reconocimiento entre episodios.
+        noise = np.random.default_rng(zlib.crc32(str(audio_path).encode()))
+        embeddings = {}
+        for i in range(speakers):
+            base = np.random.default_rng(1000 + i).normal(size=FAKE_DIM)
+            embeddings[f"SPEAKER_{i:02d}"] = (base + noise.normal(scale=0.25, size=FAKE_DIM)).round(5).tolist()
+        return EngineResult(language="es", words=words, embeddings=embeddings)

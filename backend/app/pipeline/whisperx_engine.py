@@ -95,4 +95,6 @@ class WhisperXEngine:
                         speaker=w.get("speaker") or seg.get("speaker"),
                     )
                 )
-        return EngineResult(language=language, words=words, embeddings=embeddings or {})
+        # pyannote devuelve arrays de numpy; se guardan como listas de float.
+        prints = {str(k): [float(x) for x in v] for k, v in (embeddings or {}).items() if v is not None}
+        return EngineResult(language=language, words=words, embeddings=prints)

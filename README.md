@@ -68,7 +68,21 @@ anima el perfil de quien habla.
   que se recortan al formato y se oscurecen con una viñeta. Los rótulos llevan una sombra
   suave para leerse sobre cualquier fondo. El fondo es fijo, así que no ralentiza el render.
 
-Próximas fases: reconocimiento de invitados recurrentes · más plantillas (cara a cara,
+**Fase 5: reconocer a los intervinientes recurrentes por su voz.**
+
+- Al procesar un episodio, cada voz sin asignar se compara con la huella de voz de los
+  intervinientes que ya aparecen en otros episodios. Si se parece lo suficiente, la tarjeta
+  de la voz pregunta "¿Es María López?" con el parecido, y se acepta con "Sí" o se descarta
+  con "No es" (no se vuelve a sugerir para esa voz). Arriba, "Asignar a todos" acepta de
+  una vez las sugerencias seguras.
+- La huella de cada interviniente es la media de sus voces en todos los episodios donde
+  está asignado, ponderada por el tiempo de habla, así que mejora con cada episodio. No se
+  guarda aparte: deshacer, fusionar o borrar un episodio o un perfil la actualiza sola.
+- Cada interviniente se sugiere como mucho en una voz por episodio, y nunca si ya está.
+- Umbrales (similitud coseno de las huellas de pyannote): se sugiere desde 0,5 y se marca
+  como segura desde 0,7. Se cambian con `HOTARU_MATCH_THRESHOLD` y `HOTARU_MATCH_CONFIDENT`.
+
+Próximas fases: más plantillas (cara a cara,
 audiograma, subtítulos protagonistas) y estilos de animación (ondas, barras).
 
 ## Estructura
