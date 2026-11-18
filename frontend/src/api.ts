@@ -71,7 +71,8 @@ export interface Cleanup {
   stale: boolean;
 }
 
-export type VideoTemplate = "mesa" | "foco";
+export type VideoTemplate = "mesa" | "foco" | "cara_a_cara" | "audiograma";
+export type VideoAnimation = "pulso" | "ondas" | "barras";
 export type VideoAspect = "16:9" | "9:16" | "1:1" | "4:5";
 
 export interface VideoSettings {
@@ -82,6 +83,8 @@ export interface VideoSettings {
   show_title: boolean;
   use_cleaned_audio: boolean;
   background: string;
+  animation: VideoAnimation;
+  subtitles: boolean;
 }
 
 export interface BackgroundOption {
@@ -210,6 +213,8 @@ export const api = {
       show_names: String(s.show_names),
       show_title: String(s.show_title),
       background: s.background,
+      animation: s.animation,
+      subtitles: String(s.subtitles),
       width: String(width),
       ...(speaker ? { speaker } : {}),
     }),

@@ -82,8 +82,21 @@ anima el perfil de quien habla.
 - Umbrales (similitud coseno de las huellas de pyannote): se sugiere desde 0,5 y se marca
   como segura desde 0,7. Se cambian con `HOTARU_MATCH_THRESHOLD` y `HOTARU_MATCH_CONFIDENT`.
 
-Próximas fases: más plantillas (cara a cara,
-audiograma, subtítulos protagonistas) y estilos de animación (ondas, barras).
+**Extras de vídeo: más plantillas, animaciones y subtítulos.**
+
+- Plantillas nuevas:
+  - **Cara a cara**: pantalla partida para entrevistas, los dos primeros en hablar frente a
+    frente (lado a lado en horizontal, uno encima de otro en vertical), cada uno en un panel
+    de su color. Si hay más intervinientes, van en una fila abajo.
+  - **Audiograma**: el que habla y la forma de onda del audio de los últimos segundos, que
+    avanza en directo; cada barra lleva el color de quien hablaba en ese momento.
+- Tres animaciones para el que habla, en cualquier plantilla: **pulso** (halo y anillo que
+  crecen con la voz), **ondas** (ondas que salen del avatar) y **barras** (ecualizador en
+  círculo alrededor del avatar).
+- **Subtítulos** opcionales: frases cortas de hasta dos líneas, que cortan al cambiar de
+  interviniente o en las pausas. La palabra que se está diciendo se resalta en el color del
+  que habla.
+- Con cualquier combinación, un minuto de 1080p sigue tardando unos 16–20 s en 4 núcleos.
 
 ## Estructura
 

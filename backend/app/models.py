@@ -91,6 +91,14 @@ class Cleanup(BaseModel):
 class VideoTemplate(str, Enum):
     mesa = "mesa"
     foco = "foco"
+    cara_a_cara = "cara_a_cara"
+    audiograma = "audiograma"
+
+
+class VideoAnimation(str, Enum):
+    pulso = "pulso"
+    ondas = "ondas"
+    barras = "barras"
 
 
 class VideoAspect(str, Enum):
@@ -111,6 +119,10 @@ class VideoSettings(BaseModel):
     use_cleaned_audio: bool = True
     # Fondo: id de un paisaje de naturaleza ("bosque", "aurora"…) o de una foto subida.
     background: str = Field(default="liso", min_length=1, max_length=64)
+    # Cómo se anima el que habla: pulso, ondas o barras.
+    animation: VideoAnimation = VideoAnimation.pulso
+    # Subtítulos abajo, con la palabra que se dice resaltada en el color del que habla.
+    subtitles: bool = False
 
 
 class Video(BaseModel):

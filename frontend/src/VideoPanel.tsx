@@ -1,9 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import { api, BackgroundOption, Episode, Profile, Video, VideoAspect, VideoSettings, VideoTemplate } from "./api";
+import {
+  api,
+  BackgroundOption,
+  Episode,
+  Profile,
+  Video,
+  VideoAnimation,
+  VideoAspect,
+  VideoSettings,
+  VideoTemplate,
+} from "./api";
 
 const TEMPLATES: { value: VideoTemplate; label: string; help: string }[] = [
   { value: "mesa", label: "Mesa redonda", help: "Todos a la vez; el que habla se ilumina y late con su voz." },
   { value: "foco", label: "Foco", help: "El que habla, en grande; el resto, en miniatura abajo." },
+  { value: "cara_a_cara", label: "Cara a cara", help: "Pantalla partida para entrevistas: los dos primeros, frente a frente." },
+  { value: "audiograma", label: "Audiograma", help: "El que habla y la forma de onda del audio, con su color." },
+];
+
+const ANIMATIONS: { value: VideoAnimation; label: string; help: string }[] = [
+  { value: "pulso", label: "Pulso", help: "Halo y anillo que crecen con la voz" },
+  { value: "ondas", label: "Ondas", help: "Ondas que salen del avatar" },
+  { value: "barras", label: "Barras", help: "Ecualizador alrededor del avatar" },
 ];
 
 const ASPECTS: { value: VideoAspect; label: string; help: string }[] = [
@@ -28,6 +46,8 @@ const DEFAULTS: VideoSettings = {
   show_title: true,
   use_cleaned_audio: true,
   background: "liso",
+  animation: "pulso",
+  subtitles: false,
 };
 
 export default function VideoPanel({
@@ -155,6 +175,22 @@ export default function VideoPanel({
             ))}
           </fieldset>
 
+          <fieldset className="choice-group animations">
+            <legend className="small">Animación del que habla</legend>
+            {ANIMATIONS.map((a) => (
+              <label key={a.value} className={`aspect ${settings.animation === a.value ? "strength-on" : ""}`}>
+                <input
+                  type="radio"
+                  name="animation"
+                  checked={settings.animation === a.value}
+                  onChange={() => set({ animation: a.value })}
+                />
+                <strong>{a.label}</strong>
+                <span className="muted small">{a.help}</span>
+              </label>
+            ))}
+          </fieldset>
+
           <fieldset className="choice-group">
             <legend className="small">Fondo</legend>
             <div className="backgrounds">
@@ -213,6 +249,10 @@ export default function VideoPanel({
             Mostrar nombre y cargo
           </label>
           <label className="check">
+            <input type="checkbox" checked={settings.subtitles} onChange={(e) => set({ subtitles: e.target.checked })} />
+            Subtítulos, con la palabra que se dice resaltada
+          </label>
+          <label className="check">
             <input type="checkbox" checked={settings.show_title} onChange={(e) => set({ show_title: e.target.checked })} />
             Mostrar el título del episodio
           </label>
@@ -267,6 +307,10 @@ export default function VideoPanel({
                 <div className="video-row">
                   <strong>
                     {TEMPLATES.find((t) => t.value === v.settings.template)?.label} · {v.settings.aspect}
+                    {v.settings.animation && v.settings.animation !== "pulso"
+                      ? ` · ${ANIMATIONS.find((a) => a.value === v.settings.animation)?.label}`
+                      : ""}
+                    {v.settings.subtitles ? " · subtítulos" : ""}
                   </strong>
                   <span className={`badge badge-${v.status}`}>{STATUS[v.status]}</span>
                   {v.audio && <span className="muted small">audio {v.audio}</span>}
