@@ -32,3 +32,18 @@ jobs:
           node-version: "22"
       - run: npm ci
       - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir y arrancar (sin modelos)
+        run: |
+          printf 'HOTARU_ENGINE=fake\nHOTARU_INSTALL_ML=false\n' > .env
+          docker compose up -d --build --wait
+      - name: Probar la web y la API a través de nginx
+        run: |
+          curl -fsS http://localhost:8080/ | grep -q HotaruPodcast
+          curl -fsS http://localhost:8080/api/health
+      - if: failure()
+        run: docker compose logs

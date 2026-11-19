@@ -1,0 +1,39 @@
+# Despliegue de HotaruPodcast en un servidor.
+#
+#   cp .env.example .env    # y rellena HOTARU_HF_TOKEN
+#   docker compose up -d --build
+#
+# La web queda en http://<servidor>:${HOTARU_PORT:-8080}.
+services:
+  backend:
+    build:
+      context: ./backend
+      args:
+        INSTALL_ML: ${HOTARU_INSTALL_ML:-true}
+        TORCH_INDEX_URL: ${HOTARU_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    image: hotarupodcast-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOTARU_DATA_DIR: /data
+    volumes:
+      - hotaru-data:/data
+      - hotaru-models:/models
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./frontend
+    image: hotarupodcast-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${HOTARU_PORT:-8080}:80"
+
+volumes:
+  # Episodios, intervinientes, fondos y vídeos generados.
+  hotaru-data:
+  # Modelos descargados de Whisper y pyannote (varios GB), para no bajarlos en cada arranque.
+  hotaru-models:
