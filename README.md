@@ -108,6 +108,34 @@ frontend/  Interfaz web (React + Vite)
 Los datos se guardan en disco: una carpeta por episodio en `data/episodes/<id>/` y los
 intervinientes en `data/profiles/`; las fotos de fondo, en `data/backgrounds/`.
 
+## Instalación en un servidor con Docker
+
+Requisitos: Docker con el plugin `docker compose`. Para GPU, además NVIDIA Container Toolkit.
+
+```bash
+git clone https://github.com/aramirezpedrosa/hotarupodcast.git
+cd hotarupodcast
+cp .env.example .env        # pon tu HOTARU_HF_TOKEN y, si quieres, otro puerto o modelo
+docker compose up -d --build
+```
+
+La web queda en `http://<servidor>:8080` (cambia el puerto con `HOTARU_PORT`).
+
+- Dos contenedores: `backend` (FastAPI con FFmpeg, WhisperX y pyannote; torch de CPU) y
+  `frontend` (la web servida por nginx, que redirige `/api` al backend y admite subidas
+  de hasta 4 GB). Solo se publica el puerto de la web.
+- Dos volúmenes: `hotaru-data` (episodios, intervinientes, fondos y vídeos) y
+  `hotaru-models` (modelos de Whisper y pyannote, varios GB; se descargan la primera vez
+  que se procesa un episodio y ya no se vuelven a bajar).
+- Con GPU NVIDIA:
+  `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build`.
+- Para probar sin modelos (imagen pequeña y turnos ficticios): en `.env`,
+  `HOTARU_ENGINE=fake` y `HOTARU_INSTALL_ML=false`.
+- Actualizar: `git pull && docker compose up -d --build`. Copia de seguridad: basta con
+  el volumen `hotaru-data`.
+- Para publicarlo con HTTPS y dominio, pon delante el proxy inverso del servidor (Caddy,
+  Traefik, nginx…) apuntando al puerto de la web, sin límite bajo de tamaño de subida.
+
 ## Puesta en marcha
 
 Requisitos: Python 3.10+, Node 20+ y FFmpeg.
